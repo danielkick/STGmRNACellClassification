@@ -1,0 +1,956 @@
+---
+title: "Analysis for Northcutt et al. 2018"
+author: "Daniel R. Kick"
+date: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=TRUE)
+
+tic <- Sys.time()
+
+# General + Plotting ----------------------------------------------------------
+library(tidyverse) #ggplot2, purrr, dplyr, tidyr mostly
+library(cowplot) #clean up ggplots ands plotgrid
+library(M3Drop) #for BrenneckeGetVariableGenes
+
+# Cluster Determination -------------------------------------------------------
+library(factoextra) #for fviz_nbclust
+library(NbClust) #to automate cluster determination for each dataset
+# Clustering ------------------------------------------------------------------
+library(BiocGenerics) # This is used for clustering assessment
+library(pvclust) #for pvclust
+library(dendextend) #for cutree coloring dendrograms
+library(NMF) #used for calculating purity metric
+library(clues) #used for calculating concurrance metrics
+
+# Classification --------------------------------------------------------------
+  #install.packages("caret", dependencies = c("Depends", "Suggests"))
+library(caret) # for preProcess and supervised ML models
+
+library(devtools)
+devtools::load_all() #needed to have access to SNN.R
+```
+
+```{r eval=FALSE, include=FALSE}
+#general
+
+library(rgl) #for 3d plots
+
+
+#used in unsupervised ml
+library(corrplot) #for corrplot
+library(heatmap3) #for heatmap3
+library(cluster) #for pam and clusplot
+#library(sscClust) #Can't get installed
+# For clustering comparison
+
+library(Rtsne) #for t-SNE
+
+#used supervised ml
+
+library(matrixStats)
+library(M3Drop)
+devtools::load_all()
+
+#from esynvmod
+library("extrafont") #help with plotting
+#font_import()
+loadfonts(device = "win")
+library("lemon") #clean up ggplots
+library("ggthemes") #color plots
+```
+
+
+```{r Show info to aid reproducibility}
+sessionInfo()
+```
+
+# User set up -----------------------------------------------------------------
+```{r Conrol block}
+#What should happen to plots?
+#save
+#show
+
+#What should happen to output data?
+#save
+#show
+
+run.snn.cliq <- TRUE # SNN Cliq depend on python. This scritp is written to work on windows and hasn't been tested on Unix/Macos. Needed file is in ../Py. At the point of writing, python version 3.7 has beed tested and works
+write.to.dir <- paste0(getwd(), "/inst/extdata/output_files/")
+use.seed <- 8743436
+```
+
+```{r eval=FALSE, include=FALSE}
+#28,459 
+M <- read.csv(paste0(getwd(),"/inst/extdata/scSeq.csv"), row.names = "id", header = TRUE)
+N <- read.csv("C:/Users/drk8b9/Desktop/singleCell_kallisto_counts.csv", row.names = "id", header = TRUE)
+
+dim(M)
+M <- as.matrix(M) 
+M[rowSums(M) != 0, ] %>% dim()
+M <- t(M)
+predict(preProcess(M, method = c("zv")), M) %>% dim()
+predict(preProcess(M, method = c("nzv")), M) %>% dim()
+
+dim(N)
+N <- as.matrix(N) 
+N[rowSums(N) != 0, ] %>% dim()
+N <- t(N)
+predict(preProcess(N, method = c("zv")), N) %>% dim()
+predict(preProcess(N, method = c("nzv")), N) %>% dim()
+
+```
+
+
+## our inputs: ================================================================
+```{r Pull in datasets}
+# Read in all data ------------------------------------------------------------
+k05 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.05.csv"), header = F) %>% as.data.frame()
+k2 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.2.csv"), header = F) %>% as.data.frame()
+mrna_raw <- read.csv(paste0(getwd(),"/inst/extdata/RTqPCR.csv"), row.names = "Sample", header = TRUE) %>% as.data.frame()
+seq_raw <- read.csv(paste0(getwd(),"/inst/extdata/scSeq.csv"), row.names = "id", header = TRUE) %>% t() %>% as.data.frame()
+
+# Transform RTqPCR data -------------------------------------------------------
+mrna_raw <- predict(preProcess(mrna_raw, method = c("medianImpute", "zv")), mrna_raw)
+mrna_target <- predict(preProcess(mrna_raw, method = c("center", "scale")), mrna_raw)
+
+mrna_cell <- mrna_raw[,-1]
+mrna_cell <- as.data.frame(t(mrna_cell))
+mrna_cell <- predict(preProcess(mrna_cell, method = c("center", "scale")), mrna_cell)
+mrna_cell <- cbind(Cell = mrna_raw$Cell, as.data.frame(t(mrna_cell)))
+
+# Transform Seq data ----------------------------------------------------------
+
+seq_raw <- predict(preProcess(seq_raw, method = c("zv")), seq_raw)
+seq_target <- predict(preProcess(seq_raw, method = c("center", "scale")), seq_raw)
+# center and scale by cell
+seq_cell <- seq_raw
+seq_cell <- as.data.frame(t(seq_cell))
+seq_cell <- predict(preProcess(seq_cell, method = c("center", "scale")), seq_cell)
+seq_cell <- as.data.frame(t(seq_cell))
+# Set up a cell id vector to use in each dataframe
+split.names <- rownames(seq_raw) %>% strsplit("[.]")
+split.names <- unlist(split.names)
+Cell.ids <- split.names[seq(1, to = length(split.names), by = 2)]
+# Give each dataset a `Cell` column
+seq_raw <- cbind(Cell = Cell.ids, seq_raw)
+seq_target <- cbind(Cell = Cell.ids, seq_target)
+seq_cell <- cbind(Cell = Cell.ids, seq_cell)
+
+
+## PCA ========================================================================
+# PCA can capture most of the variance
+
+#because the full seq is too much to work with locally:
+seq_pca <- prcomp(seq_cell[,-1], scale = FALSE)
+#fviz_eig(seq_pca, addlabels = TRUE)
+#factoextra::get_eigenvalue(seq_pca)
+
+seq_pca <- cbind(seq_cell$Cell, as.data.frame(seq_pca$x))
+seq_pca <- rename(seq_pca, Cell = `seq_cell$Cell`)
+
+## HVG ========================================================================
+#TODO determine if HVG is useful or if we should drop it.
+temp <- seq_raw[,-1]
+temp <- t(temp)
+
+x.data <- rowMeans(temp)
+y.data <- matrixStats::rowVars(temp)
+
+ggplot()+geom_point(aes(x = log10(x.data), y = log10(y.data)), shape = 1)
+
+#https://hemberg-lab.github.io/scRNA.seq.course/biological-analysis.html#feature-selection
+
+Brennecke_HVG <- M3Drop::BrenneckeGetVariableGenes(
+  temp,
+  fdr = 0.01,
+  minBiolDisp = 0.5
+)
+
+temp <- temp[(rownames(temp) %in% Brennecke_HVG), ]
+temp <- temp %>% t()
+seq_hvg <- cbind(Cell = seq_raw[,1], as.data.frame(temp))
+
+## Generate reduced seq sets ==================================================
+seq_raw_k05 <- seq_raw[, k05$V1]
+seq_target_k05 <- seq_target[, k05$V1]
+seq_cell_k05 <- seq_cell[, k05$V1]
+
+seq_raw_k2 <- seq_raw[, k2$V1]
+seq_target_k2 <- seq_target[, k2$V1]
+seq_cell_k2 <- seq_cell[, k2$V1]
+```
+
+# Cluster Estimation ----------------------------------------------------------
+```{r automated approach}
+## using NbClust to churn out predictions =====================================
+automated_clust_k <- function(current.df = use.input.df[, -1], current.max.k = max.k) {
+  # nb <- NbClust(use.input.df, diss="NULL", distance = "euclidean",
+  #        min.nc=2, max.nc=max.k, method = "kmeans",
+  #        index = "alllong", alphaBeale = 0.1)
+  # hist(nb$Best.nc[1,], breaks = max(na.omit(nb$Best.nc[1,])))
+
+  # nb <- NbClust(use.input.df[, -1], distance = "euclidean", min.nc=2, max.nc=max.k, method = "ward.D", index = "all")
+  # hist(nb$Best.nc[1,],
+  #     breaks = max(na.omit(nb$Best.nc[1,])))
+
+  avail.methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans") #TODO this is fucking up the seq data. at least one of the methods (maybe "single"?) is breaking the loop
+  avail.distances <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+  #Ideally this should be vectorized to speed up the process
+  cluster.estimates <- list()
+  for (use.method in avail.methods) {
+    list1 <- list()
+    for (use.distance in avail.distances) {
+      nb <- NbClust(current.df,
+        distance = use.distance,
+        min.nc = 2, max.nc = current.max.k,
+        method = "ward.D", index = "all"
+      )
+      list1[[length(list1) + 1]] <- nb$Best.nc["Number_clusters", ]
+    }
+    cluster.estimates[[length(cluster.estimates) + 1]] <- list1
+  }
+
+  new.df <- as.data.frame(matrix(nrow = length(avail.methods) * length(avail.distances), ncol = 28))
+  new.df.names <- c("Method", "Distance", names(cluster.estimates[[1]][[1]]))
+  names(new.df) <- new.df.names
+  for (i in seq_along(avail.methods)) {
+    for (j in seq_along(avail.distances)) {
+      row.num.to.use <- length(avail.methods) * (i - 1) + j
+      len.obj <- length(cluster.estimates[[i]][[j]])
+
+      new.df[row.num.to.use, 1] <- avail.methods[i]
+      new.df[row.num.to.use, 2] <- avail.distances[j]
+
+      new.df[row.num.to.use, seq(from = 3, length.out = len.obj)] <- cluster.estimates[[i]][[j]]
+    }
+  }
+  return(new.df)
+}
+```
+
+```{r iteratively call function}
+# Initial Setup ---------------------------------------------------------------
+#use.input.df <- mrna_raw #mrna_cell #mrna_target #mrna_raw
+#name.prefix <- "raw_qpcr" #"cell_qpcr" #"target_qpcr" #"raw_qpcr"
+#max.k <- (nrow(use.input.df)/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
+
+use.datasets <- list(mrna_raw, mrna_target, mrna_cell, 
+                     seq_pca, seq_target, seq_cell, seq_hvg, 
+                     seq_raw_k05, seq_target_k05, seq_cell_k05, 
+                     seq_raw_k2, seq_target_k2, seq_cell_k2)
+use.names <- list("mrna_raw", "mrna_target", "mrna_cell", 
+                     "seq_pca", "seq_target", "seq_cell", "seq_hvg", 
+                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
+                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2")
+guess_clust_list <- list()
+for (i in seq(from = 1, to = length(guess_clust_list))){
+  max.k <- (nrow(use.datasets[[i]])/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
+  guess_clust_list[[length(guess_clust_list)+1]] <- automated_clust_k(current.df = use.datasets[[i]][,-1], current.max.k = max.k)
+}
+
+walk(seq_along(guess_clust_list), function(x){
+  write.csv(guess_clust_list[[x]], file = paste0(write.to.dir, use.names[[x]], "_kEstimate.csv"))
+})
+```
+
+
+# Unsupervised Machine Learning
+```{r automate clustering}
+# Methods ---------------------------------------------------------------------
+
+## k means ====================================================================
+get_kmeans_clustering <- function(input.df = mrna_raw,
+                                  target.nclusters = 11) {
+  kmeans.m <- kmeans(input.df[, -1], centers = 11)
+  return(kmeans.m$cluster)
+}
+
+## H cluster ==================================================================
+#https://cran.r-project.org/web/packages/dendextend/vignettes/Cluster_Analysis.html #great reference!
+get_hierarchical_clustering <- function(input.df = mrna_target,
+                                        target.nclusters = 12,
+                                        use.method.dist = "cor",
+                                        use.method.hclust = "ward.D",
+                                        use.nboot = 10) {
+  temp <- input.df[, -1]
+
+  temp.clust <- pvclust(t(temp),
+    method.dist = use.method.dist,
+    method.hclust = use.method.hclust,
+    nboot = use.nboot
+  )
+  temp.clust <- as.dendrogram(temp.clust$hclust)
+
+  assignment <- cutree(temp.clust, k = target.nclusters)[order.dendrogram(temp.clust)]
+
+  return(assignment)
+}
+#hclust_methods <- c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2")
+#dist_methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski", #"correlation", "uncentered")
+
+## SNN-Cliq ===================================================================
+#2 tuning parameters (k, distance)
+get_SNN_clustering <- function(input.df = mrna_raw,
+                               use.k = 3,
+                               use.distance = "euclidean") {
+  temp <- input.df[, -1]
+  SNN(temp,
+    outfile = paste0(getwd(), "/inst/extdata/output_files/temp_edges.txt"),
+    k = use.k,
+    distance = use.distance
+  )
+
+  if (Sys.info()['sysname'] == "Windows"){
+    # in CMD run:
+    # Py\Cliq.py -i inst\extdata\output_files\temp_edges.txt -o inst\extdata\output_files\temp_clust.txt
+    shell("Py\\Cliq.py -i inst\\extdata\\output_files\\temp_edges.txt -o inst\\extdata\\output_files\\temp_clust.txt")
+  } else if (Sys.info()['sysname'] == "Darwin"){
+    warning("get_SNN_clustering() hasn't been tested on macos!")
+    #TODO edit this to work on unix systems
+  } else {
+    warning("get_SNN_clustering() hasn't been tested on linux!")
+    #TODO edit this to work on unix systems
+  }
+
+  assignment <- read.table(paste0(getwd(), "/inst/extdata/output_files/temp_clust.txt"),
+    header = FALSE, sep = "", dec = "."
+  )
+  return(assignment)
+}
+
+## Evaluate clustering performance ==========================================
+get_cluster_comparisons <- function(reference.clustering = mrna_raw$Cell,
+                                    generated.clustering) {
+  if (length(reference.clustering) != length(generated.clustering)) {
+    warning("Input vectors are not of the same length!")
+  } else {
+    # reference.clustering = mrna_raw$Cell
+    # generated.clustering = kmeans.m$cluster
+    output <- array(0, dim = 6)
+
+    reference.clustering <- as.numeric(reference.clustering) %>% as.factor()
+    generated.clustering <- as.numeric(generated.clustering) %>% as.factor()
+
+    output <- NMF::purity(reference.clustering, generated.clustering)
+    names(output) <- "Purity"
+    # Get a lot of concurrance measures
+    # https://davetang.org/muse/2017/09/21/adjusted-rand-index/
+    output <- c(
+      output,
+      clues::adjustedRand(
+        BiocGenerics::as.vector(reference.clustering),
+        BiocGenerics::as.vector(generated.clustering)
+      )
+    )
+    return(output)
+  }
+}
+
+## sweep over free clustering parameters ======================================
+evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_target #mrna_raw
+                                 #name.prefix = "raw_qpcr", # "cell_qpcr" #"target_qpcr" #"raw_qpcr"
+                                 use.k.param.kmeans = c(11),
+                                 use.k.param.hclust = c(11),
+                                 use.k.param.snncliq = c(3:9) # number of neighbors to consider
+) {
+
+  # Generate Clusterings --------------------------------------------------------
+  ## K Means Clustering =========================================================
+  # use.k.param <- c(11)
+
+  temp <- map(use.k.param.kmeans, function(iter.k.param) {
+    get_kmeans_clustering(
+      input.df = use.input.df,
+      target.nclusters = iter.k.param
+    )
+  })
+
+  param.combinations <- paste("K", as.character(
+    rep(use.k.param.kmeans, each = length(use.k.param.kmeans))
+  ), sep = ".")
+
+  K.clusters <- do.call(cbind.data.frame, temp)
+  names(K.clusters) <- param.combinations
+
+  ## Hierarchical Clustering ====================================================
+  use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski", "correlation", "uncentered") # flag thought this might cause trouble
+  use.hclust.methods <- c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2")
+
+  temp <- map(use.dist.methods, function(iter.dist) {
+    map(use.hclust.methods, function(iter.hclust) {
+      get_hierarchical_clustering(
+        input.df = use.input.df,
+        target.nclusters = use.k.param.hclust,
+        use.method.dist = iter.dist, #
+        use.method.hclust = iter.hclust, #
+        use.nboot = 10
+      )
+    })
+  })
+
+  param.combinations <- paste("H", as.character(
+    rep(use.dist.methods, each = length(use.hclust.methods))
+  ), as.character(
+    rep(use.hclust.methods, times = length(use.dist.methods))
+  ), sep = ".")
+
+  H.clusters <- do.call(cbind.data.frame, temp)
+  names(H.clusters) <- param.combinations
+  ## SNN Clustering =============================================================
+  use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski") # Note this can't use cor and uncentered like Hclust can.
+
+  temp <- map(use.dist.methods, function(iter.dist) {
+    map(use.k.param.snncliq, function(iter.k.param) {
+      print(iter.dist)
+
+      get_SNN_clustering(
+        input.df = use.input.df,
+        use.k = iter.k.param, # number of neigbhors should go up to 9 for scPCRc
+        use.distance = iter.dist
+      ) #
+    })
+  })
+
+  param.combinations <- paste("SNN", as.character(
+    rep(use.dist.methods, each = length(use.k.param.snncliq))
+  ), as.character(
+    rep(use.k.param.snncliq, times = length(use.dist.methods))
+  ), sep = ".")
+
+
+  SNN.clusters <- do.call(cbind.data.frame, temp)
+  names(SNN.clusters) <- param.combinations
+
+  # Evaluate and summarize clusters ---------------------------------------------
+  ## Merge Data Frames ==========================================================
+  all.clusters <- cbind(K.clusters, H.clusters) %>% cbind(SNN.clusters)
+  # some clusterings fail and assing all values zero
+  # Some have a TON of clusters
+  num.clusters <- map(all.clusters, function(x) {
+    print(max(x))
+  }) %>% unlist() # get number of clusters in each group
+  real.num <- use.input.df$Cell %>% as.numeric() %>% max()
+  selection.vector <- (num.clusters < (2 * (real.num)) & num.clusters > (floor(real.num / 2)) & num.clusters > 1) # don't consider anything above 2X the real number.
+
+  all.clusters <- all.clusters[, selection.vector]
+  # added for comparison; positive control
+  all.clusters <- cbind(Cell.Type = as.numeric(use.input.df$Cell), all.clusters[])
+
+  ## Score Clusterings ==========================================================
+  temp <- map(all.clusters, function(iter.param) {
+    get_cluster_comparisons(reference.clustering = use.input.df$Cell, generated.clustering = iter.param)
+  })
+
+  all.clusters.scores <- do.call(cbind.data.frame, temp)
+  all.clusters.scores <- t(all.clusters.scores) %>% as.data.frame()
+  all.clusters.scores$Clustering <- row.names(all.clusters.scores)
+
+  all.clusters.scores.long <- gather(all.clusters.scores, Metric, Value, 1:6)
+
+  ## Return long version of scores ============================================
+  return(list(all.clusters.scores, all.clusters.scores.long))
+}
+```
+
+```{r}
+#all.clusters.scores.long <- evaluate_clust_params(
+#  use.input.df = mrna_raw, # mrna_cell #mrna_target #mrna_raw
+#  use.k.param.kmeans = c(11),
+#  use.k.param.hclust = c(11),
+#  use.k.param.snncliq = c(3:9)
+#)
+#all.clusters.scores <- all.clusters.scores.long[[1]]
+
+## Run for RTqPCR =============================================================
+use.datasets <- list(mrna_raw, mrna_target, mrna_cell) # , mrna_target, mrna_cell, seq_pca, seq_target, seq_cell, seq_hvg)
+use.names.1 <- list("mrna_raw", "mrna_target", "mrna_cell") #TODO
+clust_score_list <- list()
+for (i in seq_along(use.datasets)) {
+  list.index <- length(clust_score_list) + 1
+  clust_score_list[[list.index]] <- evaluate_clust_params(
+    use.input.df = mrna_raw, # mrna_cell #mrna_target #mrna_raw
+    # name.prefix = "raw_qpcr", # "cell_qpcr" #"target_qpcr" #"raw_qpcr"
+    use.k.param.kmeans = c(11),
+    use.k.param.hclust = c(11),
+    use.k.param.snncliq = c(3:9)
+  )[[1]]
+}
+## Repeat for seq =============================================================
+use.datasets <- list(seq_pca, seq_target, seq_cell, seq_hvg, 
+                     seq_raw_k05, seq_target_k05, seq_cell_k05, 
+                     seq_raw_k2, seq_target_k2, seq_cell_k2) # , mrna_target, mrna_cell, seq_pca, seq_target, seq_cell, seq_hvg)
+use.names.2 <- list("seq_pca", "seq_target", "seq_cell", "seq_hvg", 
+                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
+                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2") #TODO
+
+for (i in seq_along(use.datasets)) {
+  list.index <- length(clust_score_list) + 1
+  clust_score_list[[list.index]] <- evaluate_clust_params(
+    use.input.df = mrna_raw, # mrna_cell #mrna_target #mrna_raw
+    # name.prefix = "raw_qpcr", # "cell_qpcr" #"target_qpcr" #"raw_qpcr"
+    use.k.param.kmeans = c(4),
+    use.k.param.hclust = c(4),
+    use.k.param.snncliq = c(3:9)
+  )[[1]]
+}
+## Write out scores ===========================================================
+use.names <- c(use.names.1, use.names.2)
+walk(seq_along(use.names), function(x){
+  write.csv(clust_score_list[[x]], file = paste0(write.to.dir, use.names[[x]], "_clustScore.csv"))
+})
+```
+
+
+# Supervised Machine Learning
+```{r}
+#use.input.df <- mrna_raw #mrna_cell #mrna_target #mrna_raw
+
+#name.prefix <- "raw_qpcr" #"cell_qpcr" #"target_qpcr" #"raw_qpcr"
+```
+
+```{r Automate ML functions}
+#Note: Must contain a column called "Cell"
+run_supervised_models <- function(use.seed = 8743436,
+                                  input.df = use.input.df){
+
+#use.seed = 8743436
+#input.df = mrna_target
+
+set.seed(use.seed)
+glmnetm <- train(
+  Cell ~ ., input.df,
+  metric = "Accuracy",
+  method = "glmnet",
+  tuneGrid = expand.grid(
+    alpha = seq(0, 1, length = 5),
+    lambda = seq(0.0001, 1, length = 100)
+  ),
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+# Plot the results
+#plot(glmnetm)
+
+
+#kNN
+set.seed(use.seed)
+knnm <- train(
+  Cell ~ . ,
+  tuneGrid = expand.grid(k = seq(from =1, to =20, by = 1)),
+  #tuneLength = 20,
+  data = input.df,
+  method = "knn",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#plot(knnm)
+#print(max(knnm$results$Accuracy, na.rm = T))
+
+#LDA
+set.seed(use.seed)
+ldam <- train(
+  Cell ~ . ,
+  data = input.df,
+  method = "lda",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#print(ldam)
+
+#neural networks
+set.seed(use.seed)
+nnmm <- train(
+  Cell ~ . ,
+  data = input.df,
+  tuneGrid = expand.grid(decay = seq(from = 0.1, to = 1, by = 0.05)),
+  method = "multinom",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#plot(nnmm)
+#print(max(nnmm$results$Accuracy, na.rm = T)) #81% accuracy
+
+set.seed(use.seed)
+nnm <- train(
+  Cell ~ . ,
+  data = input.df,
+  tuneGrid = expand.grid(size = seq(from = 1, to = 12, by = 1),
+                        decay = seq(from = 0.1, to = 1.0, by = 0.2)),
+  method = "nnet",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#plot(nnm)
+#print(max(nnm$results$Accuracy, na.rm = T))
+
+#random forest
+max.mtry = 30
+set.seed(use.seed)
+rfm <- train(
+  Cell ~ . ,
+  #tuneLength = 3,
+  tuneGrid = data.frame(mtry = rep(seq(1, max.mtry, by = 1), times = 2), #mtry can be any number from 2 to the number of columns
+                        splitrule = rep(c("extratrees", "gini"), each = max.mtry), #the docs make it look like these are the two to use for classification
+                        min.node.size = rep(2, each = (max.mtry*2))),
+  data = input.df,
+  method = "ranger",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#print(rfm)
+#plot(rfm)
+#print(max(rfm$results$Accuracy, na.rm = T))
+
+#svm
+set.seed(use.seed)
+svm.rad <- train(
+  Cell ~ .,
+  tuneGrid = expand.grid(sigma = seq(from = 0.001, to = 0.5, by = 0.01),
+                    C = seq(from = 0.5, to = 5.5, by = 1)),
+  data = input.df,
+  method = "svmRadial",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#svm.rad
+#plot(svm.rad)
+#print(max(svm.rad$results$Accuracy, na.rm = T))
+
+set.seed(use.seed)
+svm.lin <- train(
+  Cell ~ .,
+  tuneGrid = expand.grid(cost = seq(from = 0.001, to = 0.5, by = 0.01)),
+  data = input.df,
+  method = "svmLinear2",
+  trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
+)
+
+#return(list(knnm,ldam,nnmm,nnm,rfm,svm.rad,svm.lin))
+return(list(GLMNet=glmnetm,
+                          kNN=knnm,
+                          LDA=ldam,
+                          NNet=nnm,
+                          NNet.Multinom=nnmm,
+                          Rand.Forest=rfm,
+                          SVM.Radial=svm.rad,
+                          SVM.Linear=svm.lin))
+}
+```
+
+```{r}
+ml_models <- map(1:13, function(i){
+  use.input.df <- list(mrna_raw, mrna_target, mrna_cell, #TODO terminating after 2
+                     seq_pca, seq_target, seq_cell, seq_hvg, 
+                     seq_raw_k05, seq_target_k05, seq_cell_k05, 
+                     seq_raw_k2, seq_target_k2, seq_cell_k2) #seq_pca[, 1:38]
+  #out <- run_supervised_models(use.seed = 8743436, input.df = use.input.df)
+  run_supervised_models(use.seed = 8743436, input.df = use.input.df[[i]])
+})
+name.prefix <- c("mrna_raw", "mrna_target", "mrna_cell", 
+                     "seq_pca", "seq_target", "seq_cell", "seq_hvg", 
+                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
+                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2")
+
+for(i in seq_along(name.prefix)){
+
+out <- ml_models[[i]]
+
+
+
+rValues <- resamples(out)
+
+#save the accuracies for future use
+write.csv(as.data.frame(rValues$values),
+          file = paste0(write.to.dir, name.prefix[[i]],"_model_accuracy.csv"),
+          row.names = FALSE)
+
+pdf(file = paste0(write.to.dir, name.prefix[i],"_Accuracy", ".pdf"))
+  bwplot(rValues, metric = "Accuracy", ylab = c("Models"), xlim = c(0,1))
+  dev.off()
+
+pdf(file = paste0(write.to.dir, name.prefix[i],"_Kappa", ".pdf"))
+  bwplot(rValues, metric="Kappa", ylab = c("Models"), xlim = c(0,1))
+  dev.off()
+}
+```
+
+```{r}
+toc <- Sys.time()
+print(toc - tic)
+save.image(file = paste0(write.to.dir, "session_post_ml.Rdata"))
+```
+
+
+
+Plot selected models
+```{r}
+#out <- ml_models[[2]]
+
+#pdf(file = paste0(write.to.dir, "pcr_SVM", ".pdf"))
+#  varImp(out$SVM.Linear, scale=TRUE) %>%plot()
+#  dev.off()
+
+#pdf(file = paste0(write.to.dir, "pcr_glmnet", ".pdf"))
+#  varImp(out$GLMNet, scale=TRUE) %>%plot()
+#  dev.off()
+```
+
+# Repeat with Seq
+```{r}
+all.dfs <- list(seq_raw, seq_target, seq_cell, seq_hvg)
+all.prefixes <- c("raw_seq", "target_seq", "cell_seq", "hvg_seq")
+
+all.dfs <- list(seq_hvg)
+all.prefixes <- c("hvg_seq")
+
+for (JJ in seq_along(all.dfs)) {
+  if (length(all.dfs) != length(all.prefixes)) {
+    warning("Dfs and Names of inequal length!")
+  }
+  # Data Setup ------------------------------------------------------------------
+  use.input.df <- all.dfs[[JJ]]
+  name.prefix <- all.prefixes[JJ]
+
+  # Perform clusterings ---------------------------------------------------------
+  ## K Means Clustering =========================================================
+  use.k.param <- c(4)
+
+  temp <- map(use.k.param, function(iter.k.param) {
+    get_kmeans_clustering(
+      input.df = use.input.df,
+      target.nclusters = iter.k.param
+    )
+  })
+
+  param.combinations <- paste("K", as.character(
+    rep(use.k.param, each = length(use.k.param))
+  ), sep = ".")
+
+  K.clusters <- do.call(cbind.data.frame, temp)
+  names(K.clusters) <- param.combinations
+
+  ## Hierarchical Clustering ====================================================
+  use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski", "correlation", "uncentered") # flag thought this might cause trouble
+  use.hclust.methods <- c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2")
+
+  temp <- map(use.dist.methods, function(iter.dist) {
+    map(use.hclust.methods, function(iter.hclust) {
+      get_hierarchical_clustering(
+        input.df = use.input.df,
+        target.nclusters = 4,
+        use.method.dist = iter.dist, #
+        use.method.hclust = iter.hclust, #
+        use.nboot = 10
+      )
+    })
+  })
+
+
+  param.combinations <- paste("H", as.character(
+    rep(use.dist.methods, each = length(use.hclust.methods))
+  ), as.character(
+    rep(use.hclust.methods, times = length(use.dist.methods))
+  ), sep = ".")
+
+  H.clusters <- do.call(cbind.data.frame, temp)
+  names(H.clusters) <- param.combinations
+  ## SNN Clustering =============================================================
+
+  use.k.param <- c(3:8) # 8 is the nubmer of the least common cell present
+  use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski") # Note this can't use cor and uncentered like Hclust can.
+
+  temp <- map(use.dist.methods, function(iter.dist) {
+    map(use.k.param, function(iter.k.param) {
+      print(iter.dist)
+
+      get_SNN_clustering(
+        input.df = use.input.df,
+        use.k = iter.k.param, #
+        use.distance = iter.dist
+      ) #
+    })
+  })
+
+  param.combinations <- paste("SNN", as.character(
+    rep(use.dist.methods, each = length(use.k.param))
+  ), as.character(
+    rep(use.k.param, times = length(use.dist.methods))
+  ), sep = ".")
+
+
+  SNN.clusters <- do.call(cbind.data.frame, temp)
+  names(SNN.clusters) <- param.combinations
+
+
+
+  # Figure and table write out --------------------------------------------------
+  ## Merge Data Frames ==========================================================
+  all.clusters <- cbind(K.clusters, H.clusters) %>% cbind(SNN.clusters) # TODO add SCRATTCH
+  # some clusterings fail and assing all values zero
+  # Some have a TON of clusters
+  num.clusters <- map(all.clusters, function(x) {
+    print(max(x))
+  }) %>% unlist() # get number of clusters in each group
+  real.num <- use.input.df$Cell %>% as.numeric() %>% max()
+  selection.vector <- (num.clusters < (2 * (real.num)) & num.clusters > (floor(real.num / 2)) & num.clusters > 1) # don't consider anything above 2X the real number.
+
+  all.clusters <- all.clusters[, selection.vector]
+  # added for comparison; positive control
+  all.clusters <- cbind(Cell.Type = as.numeric(use.input.df$Cell), all.clusters[])
+
+  ## Score Clusterings ==========================================================
+  temp <- map(all.clusters, function(iter.param) {
+    get_cluster_comparisons(reference.clustering = use.input.df$Cell, generated.clustering = iter.param)
+  })
+
+  all.clusters.scores <- do.call(cbind.data.frame, temp)
+  all.clusters.scores <- t(all.clusters.scores) %>% as.data.frame()
+  all.clusters.scores$Clustering <- row.names(all.clusters.scores)
+
+  all.clusters.scores.long <- gather(all.clusters.scores, Metric, Value, 1:6)
+
+  ## Make plots of scores =======================================================
+
+  score.list <- map(1:6, function(current.col) {
+    # metric.labels <- c("Purity", "Rand", "HA", "MA", "FM", "Jaccard")
+    metric.labels <- c("Purity", "Rand index", "Hubert and Arabie's ARI", "Morey and Agresti's ARI", "Fowlkes and Mallows's index", "Jaccard index")
+    ggplot(all.clusters.scores, aes(x = Clustering, y = all.clusters.scores[, current.col])) +
+      geom_point(size = 3, aes(color = all.clusters.scores[, current.col])) +
+      scale_color_continuous(low = "steelblue", high = "firebrick") +
+      geom_segment(aes(
+        x = Clustering,
+        xend = Clustering,
+        y = 0,
+        yend = all.clusters.scores[, current.col]
+      )) +
+      labs(y = metric.labels[current.col]) +
+      theme(
+        axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = ""
+      )
+  })
+
+  # cowplot::plot_grid(plotlist = score.list)
+  score.heatmap <- ggplot(all.clusters.scores.long, aes(x = Clustering, y = Metric)) +
+    geom_tile(aes(fill = Value), color = "white") +
+    scale_fill_gradient(low = "white", high = "steelblue") +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+  score.list[[length(score.list) + 1]] <- score.heatmap
+
+
+  ## write out diagnostic plots =================================================
+
+  walk(1:length(score.list), function(i) {
+    plot.list <<- score.list
+
+    ggsave(plot = plot.list[[i]], device = "pdf", path = write.to.dir, filename = paste0(name.prefix, "_", i, ".pdf"), width = 12.8, height = 8.04)
+  })
+
+  # clusters
+  write.csv(all.clusters, file = paste0(write.to.dir, name.prefix, "_clusterings.csv"))
+  # cluster scores
+  write.csv(all.clusters.scores, file = paste0(write.to.dir, name.prefix, "_cluster_scores.csv"))
+}
+```
+Once we know the best clusterings...seq
+```{r plot best pcr, eval=FALSE}
+## Plot the best scoring clusters =============================================
+
+#for pcr best are h clust with correlation and ward.d2
+
+#"E:/MolecularCellClassification/inst/extdata/output_files/hvg_seq_clusterings.csv"
+r.df <- read.csv(paste0(write.to.dir, "raw_seq_clusterings.csv")) %>% as.data.frame() %>% .[, c(
+  "Cell.Type",
+  "H.euclidean.ward.D2",
+  "H.maximum.ward.D2",
+  "H.manhattan.ward.D2",
+  "H.minkowski.ward.D2"
+)]
+t.df <- read.csv(paste0(write.to.dir, "target_seq_clusterings.csv")) %>% as.data.frame() %>% .[, c(
+  "Cell.Type",
+  "H.canberra.ward.D"
+)]
+c.df <- read.csv(paste0(write.to.dir, "cell_seq_clusterings.csv")) %>% as.data.frame() %>% .[, c(
+  "Cell.Type",
+  "H.canberra.ward.D"
+)]
+h.df <- read.csv(paste0(write.to.dir, "hvg_seq_clusterings.csv")) %>% as.data.frame() %>% .[, c(
+  "Cell.Type",
+  "H.correlation.mcquitty"
+)]
+
+names(r.df) <- c(
+  "Cell.Type",
+  "r.H.euclidean.ward.D2",
+  "r.H.maximum.ward.D2",
+  "r.H.manhattan.ward.D2",
+  "r.H.minkowski.ward.D2"
+)
+names(t.df) <- c("Cell.Type", "t.H.canberra.ward.D")
+names(c.df) <- c("Cell.Type", "c.H.canberra.ward.D")
+names(h.df) <- c("Cell.Type", "h.H.correlation.mcquitty")
+
+r.df$Cell.Index <- 1:nrow(r.df)
+#best.clusters$cell.index <- 1:nrow(best.clusters)
+best.clusters <- full_join(r.df, t.df) %>% full_join(c.df) %>% full_join(h.df)
+best.clusters <- best.clusters %>% gather(Clustering, Group, names(best.clusters)[!(names(best.clusters) %in% c( "Cell.Index"))])
+
+ggplot(best.clusters, aes(x=Clustering, y=Cell.Index, fill=as.factor(Group)))+
+  geom_raster()+
+  theme(axis.text.x=element_text(angle = 45, hjust=1), legend.position = "")
+
+ggsave(device = "pdf", path = write.to.dir, filename = paste0("qpcr", "_best", ".pdf"), width = 12.8, height = 8.04)
+
+## Plot heatmap ===============================================================
+pdf(file = paste0(write.to.dir, "qpcr", "_heatmap", ".pdf"))
+  heatmap3::heatmap3(mrna_raw[,-1], method = "ward.D2")
+  dev.off()
+
+## Plot dendrograms of best ===================================================
+tree.0 <- pvclust(t(seq_target[,-1]),
+    method.dist = "canberra",
+    method.hclust = "ward.D",
+    nboot = 100
+  )$hclust %>% as.dendrogram() %>%
+  dendextend::set("labels_cex", 1) %>%
+  dendextend::color_branches(k = 4) %>%
+  dendextend::set("labels_col", value = 1:4, k=4)
+  #dendextend::rect.dendrogram(k=12) %>%
+as.ggdend(tree.0)
+
+
+tree.1 <- pvclust(t(seq_raw[,-1]),
+    method.dist = "euclidean",
+    method.hclust = "ward.D2",
+    nboot = 100
+  )$hclust %>% as.dendrogram() %>%
+  dendextend::set("labels_cex", 1) %>%
+  dendextend::color_branches(k = 4) %>%
+  dendextend::set("labels_col", value = 1:4, k=4)
+  #dendextend::rect.dendrogram(k=12) %>%
+as.ggdend(tree.1)
+
+
+tree.2 <- pvclust(t(seq_hvg[,-1]),
+    method.dist = "correlation",
+    method.hclust = "mcquitty",
+    nboot = 100
+  )$hclust %>% as.dendrogram() %>%
+  dendextend::set("labels_cex", 1) %>%
+  dendextend::color_branches(k = 4) %>%
+  dendextend::set("labels_col", value = 1:4, k=4)
+  #dendextend::rect.dendrogram(k=12) %>%
+as.ggdend(tree.2)
+
+
+ggsave(device = "pdf", path = write.to.dir, filename = paste0("qpcr_raw", "_tree", ".pdf"), width = 12.8, height = 8.04)
+
+
+
+```
+
+
