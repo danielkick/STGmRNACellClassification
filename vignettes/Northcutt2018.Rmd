@@ -106,6 +106,12 @@ library("ggthemes") #color plots
 #save
 #show
 
+#Which sections should be run?
+# Visualizations
+# Cluster.estimation
+# Clustering
+# Classification
+
 run.snn.cliq <- TRUE # SNN Cliq depend on python. This script is written to work on windows and hasn't been tested on Unix/Macos. Needed file is in ../Py. At the point of writing, python version 3.7 has beed tested.
 write.to.dir <- paste0(getwd(), "/inst/extdata/output_files/")
 use.seed <- 8743436
@@ -287,16 +293,16 @@ fviz_eig(d, addlabels = TRUE)
 factoextra::get_eigenvalue(d)
 # factoextra::fviz_pca_biplot(d)
 
-ggbiplot(d, obs.scale = 1, var.scale = 1,
-  groups = mrna_target$Cell, ellipse = TRUE, circle = TRUE) +
-  scale_color_discrete(name = '') +
-  theme(legend.direction = 'horizontal', legend.position = 'top')
-
-library(car)
-d <- cbind(d.id, d$x)
-fm <- lm(d.id ~ ., data = as.data.frame(d))
-d.anova <- Anova(fm)
-d.anova$`Pr(>F)`
+# ggbiplot(d, obs.scale = 1, var.scale = 1,
+#   groups = mrna_target$Cell, ellipse = TRUE, circle = TRUE) +
+#   scale_color_discrete(name = '') +
+#   theme(legend.direction = 'horizontal', legend.position = 'top')
+# 
+# library(car)
+# d <- cbind(d.id, d$x)
+# fm <- lm(d.id ~ ., data = as.data.frame(d))
+# d.anova <- Anova(fm)
+# d.anova$`Pr(>F)`
 
 # library(dunn.test)
 # dunn.test::dunn.test(d.anova$`Pr(>F)`, g=NA, method = "sidak", label = T, wrap = F, alpha = 0.05)
@@ -549,17 +555,13 @@ I'm packageing the above to (idealy) get a clean way to process and visualize ea
 
 ```{r}
 
-use.datasets <- list(mrna_raw, mrna_target, mrna_cell, 
-                     seq_pca, seq_target, seq_cell, 
-                     # seq_hvg,
-                     seq_raw_k05, seq_target_k05, seq_cell_k05,
-                     seq_raw_k2, seq_target_k2, seq_cell_k2
-                     )
-use.names <- list("mrna_raw", "mrna_target", "mrna_cell", 
-                     "seq_pca", "seq_target", "seq_cell", 
-                  # "seq_hvg",
-                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
-                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2")
+use.datasets <- list(mrna_raw, mrna_target, 
+                     # seq_pca, seq_target, 
+                     seq_hvg, seq_hvg_target)
+
+use.names <- list("mrna_raw", "mrna_target", 
+                  # "seq_pca", "seq_target",  
+                   "seq_hvg", "seq_hvg_target")
 
 
 
@@ -625,16 +627,16 @@ explict_iter_nbclust <- function(
 # for PCA claims there are too many missing values. Is this because some are near zero? That doe
 
 explict_iter_nbclust(
-  use.datasets = seq_target,
+  use.datasets = seq_hvg_target[,-1],
   avail.methods = c("ward.D"),
   avail.distances = c("euclidean")
   )
 
 for (i in c("kl", "ch", "hartigan", "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin", "cindex", "db", "silhouette", "duda", "pseudot2", "beale", "ratkowsky", "ball", "ptbiserial", "gap", "frey", "mcclain", "gamma", "gplus", "tau", "dunn", "hubert", "sdindex", "dindex", "sdbw")){
 try(
-NbClust(seq_target[,-1],
+NbClust(seq_hvg[,-1],
           distance = "euclidean",
-          min.nc = 1, max.nc = 4,
+          min.nc = 1, max.nc = 12,
           method = "ward.D", index = i
           ) 
 )
@@ -673,6 +675,604 @@ explict_iter_nbclust(
 
 
 ```
+
+
+```{r}
+library(optCluster)
+
+
+## This example may take a few minutes to compute
+## Obtain Dataset
+data(arabid)
+## Normalize Data with Respect to Library Size
+obj <- t(t(arabid)/colSums(arabid))
+
+## Analysis of Normalized Data using Internal and Stability Validation Measures
+norm1 <- optCluster(obj, 2:4, clMethods = "all")
+aggregPlot(norm1)
+
+
+
+## These examples may each take a few minutes to compute
+## Obtain Dataset
+data(arabid)
+## Analysis of Count Data using Internal and Stability Validation Measures
+count1 <- optCluster(arabid, 2:4, clMethods = "all", countData = TRUE)
+topMethod(count1)
+## Analysis of Normalized Data using Internal and Stability Validation Measures
+obj <- t(t(arabid)/colSums(arabid)) ## Normalized with Respect to Library Size
+norm1 <- optCluster(obj, 2:4, clMethods = "all")
+
+
+
+## These examples may each take a few minutes to compute
+## Obtain Dataset
+data(arabid)
+## Analysis of Count Data using Internal and Stability Validation Measures
+count1 <- optCluster(arabid, 2:4, clMethods = "all", countData = TRUE)
+summary(count1)
+# Obtain optimal clustering assignment
+optAssign(count1)
+## Normalize Data with Respect to Library Size
+obj <- t(t(arabid)/colSums(arabid))
+## Analysis of Normalized Data using Internal and Stability Validation Measures
+norm1 <- optCluster(obj, 2:4, clMethods = "all")
+summary(norm1)
+# Obtain optimal clustering assignment
+optAssign(norm1)
+#Obtain clustering assignment for diana with 2 clusters
+clusterResults(norm1, "diana", k = 2)$cluster
+## Analysis of Normalized Data using All Validation Measures
+if(require("Biobase") && require("annotate") && require("GO.db") &&
+require("org.At.tair.db")){
+norm2 <- optCluster(obj, 2:4, clMethods = "all", validation = "all",
+annotation = "org.At.tair.db")
+summary(norm2)
+}
+
+## Analysis with Only UPGMA using Internal and Stability Validation Measures
+hier1 <- optCluster(obj, 2:10, clMethods = "hierarchical")
+summary(hier1)
+
+
+
+avail.methods <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota", "em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson", "sa.poisson")
+
+# #All methods here seem  to work fine
+
+# avail.methods.count <- c("em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson","sa.poisson")
+# 
+# input.df <- seq_hvg[,-1]
+# min.k <- 2
+# max.k <- 10
+# 
+# for (i in avail.methods.count){
+#   print(i)
+#   try(
+#     print(optCluster(input.df,
+#                    seq(from = min.k, to = max.k, by = 1),
+#                    clMethods = i,
+#                    countData = T,
+#                    validation = "internal", #internal", "stability", "biological", "all"
+#                    hierMethod = "ward", #"average", "complete", "single", and "ward"
+#                    annotation = NULL, #Used in biological validation
+#                    clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+#                    rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+#                    distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+#                    importance = NULL, 
+#                    rankVerbose = FALSE))
+#   )
+# }
+
+avail.methods.conti <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota")
+
+  
+input.df <- seq_hvg_target[,-1]
+min.k <- 2
+max.k <- 10
+conti.block <- expand.grid(method = avail.methods.conti,
+            hier.method = c("average", "complete", "single", "ward"))
+conti.block$worked <- 0
+
+for(i in 1:nrow(conti.block)){
+  optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods = avail.methods.conti[1],
+             countData = F,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = as.character(conti.block[i, "hier.method"]), #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE) %>% print()
+}
+
+
+
+
+
+count.block
+
+
+# for a dataset
+# find what methods work
+# then run all of them together to
+oo <- optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods = avail.methods.conti[1],
+             countData = F,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = as.character(conti.block[i, "hier.method"]), #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE)
+pp <- optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods = avail.methods.conti[2],
+             countData = F,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = as.character(conti.block[i, "hier.method"]), #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE)
+qq <- optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods = avail.methods.conti[1:2],
+             countData = F,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = as.character(conti.block[i, "hier.method"]), #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE)
+
+RankAggreg::RankAggreg(
+                        # x = as.matrix(oo@ranksWeights$ranks[3, 1:9]), #appears to be using silhouette
+                        # k = 9, 
+                        # weights = as.matrix(oo@ranksWeights$weights[3, 1:9]), 
+                       x = oo@ranksWeights$ranks,
+                       k = 9, #nList,
+                       weights = oo@ranksWeights$weights,
+                       method = "CE", 
+                       distance = "Spearman", 
+                       importance = NULL, 
+                       verbose = F)
+
+oo@clVal
+oo@rankAgg
+oo@ranksWeights
+
+d <- data.frame(
+  ranks = c(oo@ranksWeights$ranks[3,], pp@ranksWeights$ranks[3,]),
+  weights = c(oo@ranksWeights$weights[3,], pp@ranksWeights$weights[3,])
+  
+)
+
+d[base::order(d$weights, decreasing = T), ]$ranks
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+```
+
+
+
+```{r}
+avail.methods.conti <- c("agnes", "clara", "diana", #"fanny", 
+                         "hierarchical.average", "hierarchical.complete", "hierarchical.single", "hierarchical.ward", 
+                         "kmeans", "model", "pam"#, #"som", 
+                         #"sota"
+                         )
+
+input.df <- seq_hvg_target[,-1]
+min.k <- 2
+max.k <- 10
+
+# output.list <- list()
+output.list <- vector("list", length = length(avail.methods.conti))
+for (i in seq_along(avail.methods.conti)){
+  print(avail.methods.conti[i])
+  
+  if (avail.methods.conti[i] == "hierarchical.average"){
+    use.clMethods <- "hierarchical"
+    use.hierMethod <- "average"
+  }else if(avail.methods.conti[i] == "hierarchical.complete"){
+    use.clMethods <- "hierarchical"
+    use.hierMethod <- "complete"
+  }else if(avail.methods.conti[i] == "hierarchical.single"){
+    use.clMethods <- "hierarchical"
+    use.hierMethod <- "single"    
+  }else if(avail.methods.conti[i] == "hierarchical.ward"){
+    use.clMethods <- "hierarchical"
+    use.hierMethod <- "ward"
+  }else{
+    use.clMethods <- avail.methods.conti[i]
+    use.hierMethod <- "average"
+  }
+  temp.out <- NA
+  temp.out <- optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods = use.clMethods,
+             countData = F,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = use.hierMethod, #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE)
+  
+  if (typeof(temp.out) == "S4"){
+    output.list[[i]]$ranks <- temp.out@ranksWeights$ranks
+    output.list[[i]]$weights <- temp.out@ranksWeights$weights
+  
+  }else if (typeof(temp.out) == "logical"){
+    output.list[[i]]$ranks <- NA
+    output.list[[i]]$weights <- NA
+  }else{
+    warning(paste0("At i=", as.character(i), " temp.out is neither type S4 nor logical."))
+  }
+  
+}
+
+#Make sure that the hierarchical values get the appropriate method
+
+for (i in seq_along(avail.methods.conti)){
+  if (stringr::str_starts(avail.methods.conti[i], "hierarchical")){
+    
+    
+    
+    add.to.name <- stringr::str_remove(avail.methods.conti[i], "hierarchical.")
+    
+    
+    for (j in seq(from = 1, to =  length(output.list[[i]][[1]][3, ]))){
+      temp.str <- stringr::str_split(output.list[[i]][[1]][3, j], "-")
+      output.list[[i]][[1]][3, j] <- paste0(as.character(temp.str[[1]][1]), ".", add.to.name, "-", as.character(temp.str[[1]][2]))
+    }
+  }
+}
+
+# Prepare output
+d <- list()
+for (i in seq_along(output.list)){
+  d$ranks <- c(d$ranks,  output.list[[i]][[1]][3, ])
+  d$weights <- c(d$weights,  output.list[[i]][[2]][3, ])
+}
+
+d <- as.data.frame(d)
+d <- separate(d, ranks, c("Method", "k"), "-")
+d$k <- as.numeric(d$k)
+
+
+  
+library(ggstance) # for position_dodgev
+ggplot(d, aes(x = weights, y = k))+
+  geom_hline(yintercept = seq(0,10), color = "gray")+
+  
+  geom_line(aes(color = Method), position = ggstance::position_dodgev(height = 0.5))+
+  # geom_line(aes(group = Method, color = Method), position = position_jitter(width = 0, height = 0.2))+
+  geom_point(aes(color = Method), position = ggstance::position_dodgev(height = 0.5), alpha = 0.7, size = 2)+
+  geom_hline(yintercept = 4, linetype = 2)+
+  coord_cartesian(ylim = c(0, 10))+
+  theme(legend.position = "bottom")
+
+
+# ggplot(d, aes(x = weights, y = k))+
+#   geom_hline(yintercept = seq(0,10), color = "gray")+
+#   
+#   geom_line(aes(color = Method), position = ggstance::position_dodgev(height = 0.5))+
+#   # geom_line(aes(group = Method, color = Method), position = position_jitter(width = 0, height = 0.2))+
+#   geom_point(aes(color = Method), position = ggstance::position_dodgev(height = 0.5), alpha = 0.7, size = 2)+
+#   geom_hline(yintercept = 4, linetype = 2)+
+#   coord_cartesian(ylim = c(2, 6))+
+#   theme(legend.position = "bottom")
+
+
+out2 <- optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods = c("agnes", "clara", "diana", 
+                         "hierarchical", 
+                         "kmeans", "model", "pam"),
+             countData = F,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = "ward", #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE)
+out2
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+function (obj, nClust, clMethods = c("clara", "diana", "hierarchical", 
+    "kmeans", "model", "pam", "som", "sota"), countData = FALSE, 
+    validation = c("internal", "stability"), hierMethod = "average", 
+    annotation = NULL, clVerbose = FALSE, rankMethod = "CE", 
+    distance = "Spearman", importance = NULL, rankVerbose = FALSE, 
+    ...) 
+{
+    is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) abs(x - 
+        round(x)) < tol
+    isCountData <- all(is.wholenumber(obj))
+    if (isTRUE(isCountData) && identical(countData, FALSE)) {
+        warning("obj is count data but countData is set to FALSE")
+    }
+    else if (identical(isCountData, FALSE) && isTRUE(countData)) {
+        warning("obj is not count data but countData is set to TRUE")
+    }
+    if ("all" %in% clMethods) {
+        if (isTRUE(countData)) {
+            clMethods <- c("em.nbinom", "da.nbinom", "sa.nbinom", 
+                "em.poisson", "da.poisson", "sa.poisson")
+        }
+        else {
+            if (hierMethod == "ward") {
+                clMethods <- c("agnes", "clara", "diana", "fanny", 
+                  "hierarchical", "kmeans", "model", "pam", "som", 
+                  "sota")
+            }
+            else {
+                clMethods <- c("clara", "diana", "fanny", "hierarchical", 
+                  "kmeans", "model", "pam", "som", "sota")
+            }
+        }
+    }
+    if ("all" %in% validation) {
+        validation <- c("internal", "stability", "biological")
+    }
+    nClustOut <- nClust
+    switch(class(obj), matrix = mat <- obj, ExpressionSet = mat <- Biobase::exprs(obj), 
+        data.frame = {
+            if (any(!sapply(obj, class) %in% c("numeric", "integer"))) stop("data frame 'obj' contains non-numeric data")
+            mat <- as.matrix(obj)
+        }, stop("argument 'obj' must be a matrix, data.frame, or ExpressionSet object"))
+    addArgs <- list(...)
+    if (exists(c("verbose"), where = addArgs)) {
+        stop("must specify 'verbose' as 'clVerbose' or 'rankVerbose'")
+    }
+    if (exists(c("method"), where = addArgs)) {
+        stop("must specify 'method' as 'hierMethod', or 'rankMethod'")
+    }
+    mbCountNames <- c("em.nbinom", "da.nbinom", "sa.nbinom", 
+        "em.poisson", "da.poisson", "sa.poisson")
+    mbCountMethods <- clMethods[clMethods %in% mbCountNames]
+    if (length(mbCountMethods) > 0) {
+        if (!requireNamespace("MBCluster.Seq")) {
+            stop("package 'MBCluster.Seq' required for clustering count data")
+        }
+        if (isTRUE(isCountData)) {
+            mbCount <- TRUE
+            clMethods <- clMethods[-which(clMethods %in% mbCountNames)]
+        }
+        else {
+            stop("obj is not count data and or more of the model based clustering algorithms for count data have been selected")
+        }
+        if (exists(c("Treatment"), where = addArgs)) {
+            uniqueTreatment <- addArgs$Treatment
+            addArgs <- addArgs[-which(names(addArgs) == "Treatment")]
+        }
+        else if (is.null(colnames(obj))) {
+            stop("column names or 'Treatment' argument must be used for clustering count data")
+        }
+        else {
+            uniqueTreatment <- colnames(obj)
+            if (length(uniqueTreatment) == length(unique(uniqueTreatment))) {
+                uniqueTreatment <- substr(uniqueTreatment, 1, 
+                  nchar(uniqueTreatment) - 1)
+            }
+        }
+        if (exists(c("Normalizer"), where = addArgs)) {
+            Normalizer <- addArgs$Normalizer
+            addArgs <- addArgs[-which(names(addArgs) == "Normalizer")]
+        }
+        else {
+            Normalizer <- NULL
+        }
+        if (exists(c("iter.max"), where = addArgs)) {
+            iter.max <- addArgs$iter.max
+            addArgs <- addArgs[-which(names(addArgs) == "iter.max")]
+        }
+        else {
+            iter.max <- 30
+        }
+        if (exists(c("TMP"), where = addArgs)) {
+            TMP <- addArgs$TMP
+            addArgs <- addArgs[-which(names(addArgs) == "TMP")]
+        }
+        else {
+            TMP <- NULL
+        }
+    }
+    else {
+        mbCount <- FALSE
+    }
+    RankAggreg.names <- c(names(formals(RankAggreg)), "p")
+    RankAggreg.args <- addArgs[names(addArgs) %in% RankAggreg.names]
+    if (length(RankAggreg.args) > 0) {
+        clValid.args <- addArgs[-which(names(addArgs) %in% RankAggreg.names)]
+    }
+    else {
+        clValid.args <- addArgs
+    }
+    if (exists(c("maxitems"), where = clValid.args)) {
+        maxitems <- clValid.args$maxitems
+        clValid.args <- clValid.args[-which(names(clValid.args) == 
+            "maxitems")]
+    }
+    else if (nrow(obj) > 600) {
+        maxitems <- nrow(obj)
+    }
+    else {
+        maxitems <- 600
+    }
+    if (length(clMethods) > 0) {
+        clVObj <- do.call("clValid", c(list(obj, nClust, clMethods, 
+            validation, method = hierMethod, annotation = annotation, 
+            verbose = clVerbose, maxitems = maxitems), clValid.args))
+        if (any(is.na(clVObj@measures))) {
+            stop("NA validation measures returned for at least one clustering algorithm \n  Rank aggregation cannot be performed")
+        }
+        clValResults <- clVObj@clusterObjs
+        measNames <- measNames(clVObj)
+        clAlgs <- clusterMethods(clVObj)
+        metric <- clVObj@metric
+        neighbSize <- clVObj@neighbSize
+        GOcategory <- clVObj@GOcategory
+        goTermFreq <- clVObj@goTermFreq
+    }
+    else {
+        measNames <- c(if ("stability" %in% validation) c("APN", 
+            "AD", "ADM", "FOM"), if ("internal" %in% validation) c("Connectivity", 
+            "Dunn", "Silhouette"), if ("biological" %in% validation) c("BHI", 
+            "BSI"))
+        clValResults <- list()
+        clAlgs <- vector()
+        if (exists(c("metric"), where = clValid.args)) {
+            metric <- clValid.args$metric
+        }
+        else {
+            metric <- "euclidean"
+        }
+        if (exists(c("neighbSize"), where = clValid.args)) {
+            neighbSize <- clValid.args$neighbSize
+        }
+        else {
+            neighbSize <- 10
+        }
+        if (exists(c("GOcategory"), where = clValid.args)) {
+            GOcategory <- clValid.args$GOcategory
+        }
+        else {
+            GOcategory <- "all"
+        }
+        if (exists(c("goTermFreq"), where = clValid.args)) {
+            goTermFreq <- clValid.args$goTermFreq
+        }
+        else {
+            goTermFreq <- 0.05
+        }
+        if (exists(c("dropEvidence"), where = clValid.args)) {
+            dropEvidence <- clValid.args$dropEvidence
+        }
+        else {
+            dropEvidence <- NULL
+        }
+    }
+    if (isTRUE(mbCount)) {
+        valMBCount <- mbCountVal(mat, Normalizer, uniqueTreatment, 
+            validation, measNames, nClust, metric, neighbSize, 
+            clVerbose, mbCountMethods, iter.max, TMP, annotation, 
+            GOcategory, goTermFreq, dropEvidence)
+        MBCountArray <- valMBCount$measures
+        MBCountCluster <- valMBCount$clusterObj
+    }
+    nClust <- as.character(nClust)
+    if (isTRUE(mbCount)) {
+        clAlgs <- c(clAlgs, mbCountMethods)
+        meas <- array(dim = c(length(measNames), length(nClust), 
+            length(clAlgs)))
+        dimnames(meas) <- list(measNames, nClust, clAlgs)
+        j <- 1
+        for (i in 1:dim(meas)[3]) {
+            if (i <= (dim(meas)[3] - length(mbCountMethods))) {
+                meas[, , i] <- clVObj@measures[, , i]
+            }
+            else {
+                meas[, , i] <- MBCountArray[, , j]
+                j <- j + 1
+            }
+        }
+        clusterResults <- c(clValResults, MBCountCluster)
+    }
+    else {
+        meas <- clVObj@measures
+        clusterResults <- clValResults
+    }
+    clVal <- new("clValid", clusterObjs = clusterResults, measures = meas, 
+        measNames = measNames, clMethods = clAlgs, labels = rownames(obj), 
+        nClust = nClustOut, validation = validation, metric = metric, 
+        method = hierMethod, neighbSize = neighbSize, GOcategory = GOcategory, 
+        goTermFreq = goTermFreq, annotation = annotation, call = match.call())
+    clusterOrder <- getRanksWeights(clVal)
+    if ("biological" %in% validation) {
+        BHIrowNum <- which(rownames(clusterOrder$ranks) == "BHI")
+        clusterOrder$ranks[BHIrowNum, ] <- rev(clusterOrder$ranks[BHIrowNum, 
+            ])
+        clusterOrder$weights[BHIrowNum, ] <- rev(clusterOrder$weights[BHIrowNum, 
+            ])
+        BSIrowNum <- which(rownames(clusterOrder$ranks) == "BSI")
+        clusterOrder$ranks[BSIrowNum, ] <- rev(clusterOrder$ranks[BSIrowNum, 
+            ])
+        clusterOrder$weights[BSIrowNum, ] <- rev(clusterOrder$weights[BSIrowNum, 
+            ])
+    }
+    if (exists(c("k"), where = RankAggreg.args)) {
+        nList <- RankAggreg.args$k
+        RankAggreg.args <- RankAggreg.args[-which(names(RankAggreg.args) == 
+            "k")]
+    }
+    else {
+        nList <- ncol(clusterOrder$ranks)
+    }
+    if (exists(c("weights"), where = RankAggreg.args)) {
+        clusterOrder$weights <- RankAggreg.args$weights
+        RankAggreg.args <- RankAggreg.args[-which(names(RankAggreg.args) == 
+            "weights")]
+    }
+    if (is.null(importance)) {
+        importance <- rep(1, nrow(clusterOrder$ranks))
+    }
+    optimal.list <- do.call("RankAggreg", c(list(x = clusterOrder$ranks, 
+        k = nList, weights = clusterOrder$weights, method = rankMethod, 
+        distance = distance, importance = importance, verbose = rankVerbose), 
+        RankAggreg.args))
+    new("optCluster", inputData = mat, clVal = clVal, ranksWeights = clusterOrder, 
+        rankAgg = optimal.list)
+}
+```
+
+
+
+
+
+
+
 
 
 
