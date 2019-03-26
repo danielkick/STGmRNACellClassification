@@ -16,6 +16,10 @@ library(tidyverse) #ggplot2, purrr, dplyr, tidyr mostly
 library(cowplot) #clean up ggplots ands plotgrid
 library(M3Drop) #for BrenneckeGetVariableGenes
 
+
+# install_github("vqv/ggbiplot")
+library(ggbiplot)
+
 # Cluster Determination -------------------------------------------------------
 library(factoextra) #for fviz_nbclust
 library(NbClust) #to automate cluster determination for each dataset
@@ -88,11 +92,11 @@ library("ggthemes") #color plots
 ```
 
 
-```{r Show info to aid reproducibility}
-sessionInfo()
-```
 
-# User set up -----------------------------------------------------------------
+
+# Setup
+## Control what code blocks are run.
+
 ```{r Conrol block}
 #What should happen to plots?
 #save
@@ -102,7 +106,7 @@ sessionInfo()
 #save
 #show
 
-run.snn.cliq <- TRUE # SNN Cliq depend on python. This scritp is written to work on windows and hasn't been tested on Unix/Macos. Needed file is in ../Py. At the point of writing, python version 3.7 has beed tested and works
+run.snn.cliq <- TRUE # SNN Cliq depend on python. This script is written to work on windows and hasn't been tested on Unix/Macos. Needed file is in ../Py. At the point of writing, python version 3.7 has beed tested.
 write.to.dir <- paste0(getwd(), "/inst/extdata/output_files/")
 use.seed <- 8743436
 ```
@@ -129,32 +133,39 @@ predict(preProcess(N, method = c("nzv")), N) %>% dim()
 ```
 
 
-## our inputs: ================================================================
+## Load Datasets:
 ```{r Pull in datasets}
 # Read in all data ------------------------------------------------------------
-k05 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.05.csv"), header = F) %>% as.data.frame()
-k2 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.2.csv"), header = F) %>% as.data.frame()
 mrna_raw <- read.csv(paste0(getwd(),"/inst/extdata/RTqPCR.csv"), row.names = "Sample", header = TRUE) %>% as.data.frame()
+
 seq_raw <- read.csv(paste0(getwd(),"/inst/extdata/scSeq.csv"), row.names = "id", header = TRUE) %>% t() %>% as.data.frame()
+
+k2 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.2.csv"), header = F) %>% as.data.frame()
+k05 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.05.csv"), header = F) %>% as.data.frame()
+
+
+
 
 # Transform RTqPCR data -------------------------------------------------------
 mrna_raw <- predict(preProcess(mrna_raw, method = c("medianImpute", "zv")), mrna_raw)
 mrna_target <- predict(preProcess(mrna_raw, method = c("center", "scale")), mrna_raw)
 
-mrna_cell <- mrna_raw[,-1]
-mrna_cell <- as.data.frame(t(mrna_cell))
-mrna_cell <- predict(preProcess(mrna_cell, method = c("center", "scale")), mrna_cell)
-mrna_cell <- cbind(Cell = mrna_raw$Cell, as.data.frame(t(mrna_cell)))
+# mrna_cell <- mrna_raw[,-1]
+# mrna_cell <- as.data.frame(t(mrna_cell))
+# mrna_cell <- predict(preProcess(mrna_cell, method = c("center", "scale")), mrna_cell)
+# mrna_cell <- cbind(Cell = mrna_raw$Cell, as.data.frame(t(mrna_cell)))
 
 # Transform Seq data ----------------------------------------------------------
 
 seq_raw <- predict(preProcess(seq_raw, method = c("zv")), seq_raw)
 seq_target <- predict(preProcess(seq_raw, method = c("center", "scale")), seq_raw)
-# center and scale by cell
-seq_cell <- seq_raw
-seq_cell <- as.data.frame(t(seq_cell))
-seq_cell <- predict(preProcess(seq_cell, method = c("center", "scale")), seq_cell)
-seq_cell <- as.data.frame(t(seq_cell))
+
+# # center and scale by cell
+# seq_cell <- seq_raw
+# seq_cell <- as.data.frame(t(seq_cell))
+# seq_cell <- predict(preProcess(seq_cell, method = c("center", "scale")), seq_cell)
+# seq_cell <- as.data.frame(t(seq_cell))
+
 # Set up a cell id vector to use in each dataframe
 split.names <- rownames(seq_raw) %>% strsplit("[.]")
 split.names <- unlist(split.names)
@@ -162,19 +173,19 @@ Cell.ids <- split.names[seq(1, to = length(split.names), by = 2)]
 # Give each dataset a `Cell` column
 seq_raw <- cbind(Cell = Cell.ids, seq_raw)
 seq_target <- cbind(Cell = Cell.ids, seq_target)
-seq_cell <- cbind(Cell = Cell.ids, seq_cell)
+# seq_cell <- cbind(Cell = Cell.ids, seq_cell)
 
 
 ## PCA ========================================================================
 # PCA can capture most of the variance
 
-#because the full seq is too much to work with locally:
-seq_pca <- prcomp(seq_cell[,-1], scale = FALSE)
-#fviz_eig(seq_pca, addlabels = TRUE)
-#factoextra::get_eigenvalue(seq_pca)
-
-seq_pca <- cbind(seq_cell$Cell, as.data.frame(seq_pca$x))
-seq_pca <- rename(seq_pca, Cell = `seq_cell$Cell`)
+# #because the full seq is too much to work with locally:
+# seq_pca <- prcomp(seq_cell[,-1], scale = FALSE)
+# #fviz_eig(seq_pca, addlabels = TRUE)
+# #factoextra::get_eigenvalue(seq_pca)
+# 
+# seq_pca <- cbind(seq_cell$Cell, as.data.frame(seq_pca$x))
+# seq_pca <- rename(seq_pca, Cell = `seq_cell$Cell`)
 
 ## HVG ========================================================================
 #TODO determine if HVG is useful or if we should drop it.
@@ -201,14 +212,131 @@ seq_pca <- rename(seq_pca, Cell = `seq_cell$Cell`)
 ## Generate reduced seq sets ==================================================
 seq_raw_k05 <- seq_raw[, k05$V1]
 seq_target_k05 <- seq_target[, k05$V1]
-seq_cell_k05 <- seq_cell[, k05$V1]
+# seq_cell_k05 <- seq_cell[, k05$V1]
 
 seq_raw_k2 <- seq_raw[, k2$V1]
 seq_target_k2 <- seq_target[, k2$V1]
-seq_cell_k2 <- seq_cell[, k2$V1]
+# seq_cell_k2 <- seq_cell[, k2$V1]
 ```
 
-# Cluster Estimation ----------------------------------------------------------
+## Reduced the RNA-Seq Data's dimensions
+```{r}
+# TODO determine if HVG is useful or if we should drop it.
+temp <- seq_raw[,-1]
+temp <- t(temp)
+
+# x.data <- rowMeans(temp)
+# y.data <- matrixStats::rowVars(temp)
+# 
+# ggplot()+geom_point(aes(x = log10(x.data), y = log10(y.data)), shape = 1)
+
+#https://hemberg-lab.github.io/scRNA.seq.course/biological-analysis.html#feature-selection
+
+Brennecke_HVG <- M3Drop::BrenneckeGetVariableGenes(
+  temp,
+  fdr = 0.01,
+  minBiolDisp = 0.5
+)
+
+seq_hvg <- seq_raw[, names(seq_raw) %in% c("Cell", Brennecke_HVG)]
+
+# temp <- temp[(rownames(temp) %in% Brennecke_HVG), ]
+# temp <- temp %>% t()
+# seq_hvg <- cbind(Cell = seq_raw[,1], as.data.frame(temp))
+
+seq_hvg_target <- predict(preProcess(seq_hvg, method = c("center", "scale")), seq_hvg)
+
+```
+
+
+
+# Visualizations of the data
+```{r}
+# Heatmaps ----
+## qRT-PCR ====
+d <- mrna_target
+d <- gather(d, key = "Transcript", value = "Count", 2:ncol(d))
+
+ggplot(d, aes(x = Transcript, y = Cell))+
+  geom_tile(aes(fill = Count))+
+  scale_fill_gradient(low = "white", high = "steelblue")
+
+## RNA-Seq ====
+d <- seq_target
+d <- gather(d, key = "Transcript", value = "Count", 2:ncol(d))
+
+ggplot(d, aes(x = Transcript, y = Cell))+
+  geom_tile(aes(fill = Count))+
+  scale_fill_gradient(low = "white", high = "steelblue")
+
+
+d <- seq_hvg_target
+d <- gather(d, key = "Transcript", value = "Count", 2:ncol(d))
+
+ggplot(d, aes(x = Transcript, y = Cell))+
+  geom_tile(aes(fill = Count))+
+  scale_fill_gradient(low = "white", high = "steelblue")
+
+
+# Scree plots ----
+## qRT-PCR ====
+d <- mrna_raw
+d.id <- d[,1]
+d <- prcomp(d[,-1], scale = FALSE)
+fviz_eig(d, addlabels = TRUE)
+factoextra::get_eigenvalue(d)
+# factoextra::fviz_pca_biplot(d)
+
+ggbiplot(d, obs.scale = 1, var.scale = 1,
+  groups = mrna_target$Cell, ellipse = TRUE, circle = TRUE) +
+  scale_color_discrete(name = '') +
+  theme(legend.direction = 'horizontal', legend.position = 'top')
+
+library(car)
+d <- cbind(d.id, d$x)
+fm <- lm(d.id ~ ., data = as.data.frame(d))
+d.anova <- Anova(fm)
+d.anova$`Pr(>F)`
+
+# library(dunn.test)
+# dunn.test::dunn.test(d.anova$`Pr(>F)`, g=NA, method = "sidak", label = T, wrap = F, alpha = 0.05)
+# TODO: I've left off here to complete H's suggestion we need to
+# TODO: get significant PCs for each dataset
+# TODO: wrtie out a table of the top 10 or so genes that differentiate cell types
+
+
+# d <- mrna_raw
+# d.id <- d[,1]
+# d <- prcomp(d[,-1], scale = TRUE)
+# fviz_eig(d, addlabels = TRUE)
+# factoextra::get_eigenvalue(d)
+# 
+# 
+# ## RNA-Seq ====
+# d <- seq_raw
+# d.id <- d[,1]
+# d <- prcomp(d[,-1], scale = FALSE)
+# fviz_eig(d, addlabels = TRUE)
+# factoextra::get_eigenvalue(d)
+# 
+# 
+# d <- seq_raw
+# d.id <- d[,1]
+# d <- prcomp(d[,-1], scale = TRUE)
+# fviz_eig(d, addlabels = TRUE)
+# factoextra::get_eigenvalue(d)
+
+
+
+
+
+
+```
+
+
+
+
+# Cluster Estimation 
 ```{r automated approach}
 ## using NbClust to churn out predictions =====================================
 automated_clust_k <- function(current.df = use.input.df[, -1], current.max.k = max.k) {
@@ -1248,3 +1376,6 @@ ggsave(device = "pdf", path = write.to.dir, filename = paste0("qpcr_raw", "_tree
 ```
 
 
+```{r Show info to aid reproducibility}
+sessionInfo()
+```
