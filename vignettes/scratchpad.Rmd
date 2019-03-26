@@ -370,7 +370,7 @@ get_SNN_clustering <- function(input.df = mrna_raw[, -1],
     k = use.k,
     distance = use.distance
   )
-  warning("Verifying output is recommended -- Old temp_clust.txt files can return nonsensical clusterings. \nThis code has been tested on 64 bit Windows 10 but not on other versions or systems.")
+  warning("Ensure output makes sense: If directory permissions are not set correctly, this will return the most recently run clustering.")
   if (Sys.info()['sysname'] == "Windows"){
     # in CMD run:
     # Py\Cliq.py -i inst\extdata\output_files\temp_edges.txt -o inst\extdata\output_files\temp_clust.txt
@@ -430,14 +430,15 @@ get_cluster_comparisons <- function(reference.clustering = mrna_raw$Cell,
   }
 }
 
-
-
 get_cluster_comparisons(
   reference.clustering = seq_raw_k05[, 1],
-  generated.clustering = get_SNN_clustering(input.df = seq_raw_k05[, -1],
-                               use.k = 3,
-                               use.distance = "euclidean") %>% t() #note that because of the formatting of get_SNN_clustering's output, transpose is required
+  generated.clustering = get_hierarchical_clustering(input.df = seq_raw_k05[, -1],
+                                        target.nclusters = 4,
+                                        use.method.dist = "euclidean",
+                                        use.method.hclust = "ward.D",
+                                        use.nboot = 10)
 )
+
 ```
 
 ```{r}
@@ -447,7 +448,6 @@ generate_clusterings <- function(use.input.df = mrna_raw[, -1],
                                  hclust_clust.methods = c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2"),
                                  hclust_k.param = 11,
                                  hclust_nboot = 10,
-                                 snnclust_verfied = FALSE,
                                  snnclust_k.param = c(3:9),
                                  snnclust_dist.methods = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"),
                                  winnow.clusterings = FALSE) {
@@ -495,7 +495,9 @@ generate_clusterings <- function(use.input.df = mrna_raw[, -1],
 
 
   ## SNN Clustering =============================================================
-  if (snnclust_verfied == TRUE) {
+  if (TRUE == FALSE) {
+    # TODO check this after SNN is running again
+
     # use.k.param <- c(3:9)
     # use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski") # Note this can't use cor and uncentered like Hclust can.
 
@@ -522,13 +524,8 @@ generate_clusterings <- function(use.input.df = mrna_raw[, -1],
   }
 
   # Merge Data Frames -----------------------------------------------------------
-  if (snnclust_verfied == TRUE) {
-    all.clusters <- cbind(K.clusters, H.clusters) %>% cbind(SNN.clusters)
-  } else {
-    all.clusters <- cbind(K.clusters, H.clusters)
-  }
-  
-  
+  all.clusters <- cbind(K.clusters, H.clusters) # TODO %>% cbind(SNN.clusters)
+
   if (winnow.clusterings == TRUE) {
     # some clusterings fail and pass all values zero
     # Some have a TON of clusters
@@ -549,7 +546,6 @@ out1 <- generate_clusterings(use.input.df = mrna_raw[, -1],
                                  hclust_clust.methods = c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2"),
                                  hclust_k.param = 11,
                                  hclust_nboot = 10,
-                             snnclust_verfied = TRUE,
                                  snnclust_k.param = c(3:9),
                                  snnclust_dist.methods = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"),
                                  winnow.clusterings = FALSE)
@@ -581,7 +577,6 @@ out2 <- generate_clusterings(use.input.df = seq_cell_k05[, -1],
                                  hclust_clust.methods = c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2"),
                                  hclust_k.param = 4,
                                  hclust_nboot = 10,
-                             snnclust_verfied = TRUE,
                                  snnclust_k.param = c(3:9),
                                  snnclust_dist.methods = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"),
                                  winnow.clusterings = FALSE)

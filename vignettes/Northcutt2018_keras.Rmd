@@ -1,0 +1,246 @@
+---
+title: "Analysis for Northcutt et al. 2018"
+author: "Daniel R. Kick"
+date: ""
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache=F)
+
+tic <- Sys.time()
+
+# General + Plotting ----------------------------------------------------------
+library(tidyverse) #ggplot2, purrr, dplyr, tidyr mostly
+library(cowplot) #clean up ggplots ands plotgrid
+library(M3Drop) #for BrenneckeGetVariableGenes
+
+# Cluster Determination -------------------------------------------------------
+library(factoextra) #for fviz_nbclust
+library(NbClust) #to automate cluster determination for each dataset
+# Clustering ------------------------------------------------------------------
+library(BiocGenerics) # This is used for clustering assessment
+library(pvclust) #for pvclust
+library(dendextend) #for cutree coloring dendrograms
+library(NMF) #used for calculating purity metric
+library(clues) #used for calculating concurrance metrics
+
+# Classification --------------------------------------------------------------
+  #install.packages("caret", dependencies = c("Depends", "Suggests"))
+library(caret) # for preProcess and supervised ML models
+
+library(devtools)
+devtools::load_all() #needed to have access to SNN.R
+```
+
+```{r eval=FALSE, include=FALSE}
+#general
+
+library("rgl") #for 3d plots
+
+
+#used in unsupervised ml
+library("corrplot") #for corrplot
+library("heatmap3") #for heatmap3
+library("cluster") #for pam and clusplot
+#library(sscClust) #Can't get installed
+# For clustering comparison
+
+library("Rtsne") #for t-SNE
+
+#used supervised ml
+
+library("matrixStats")
+library("M3Drop")
+#devtools::load_all()
+
+#from esynvmod
+library("extrafont") #help with plotting
+#font_import()
+#loadfonts(device = "win")
+library("lemon") #clean up ggplots
+library("ggthemes") #color plots
+
+
+
+# 
+# 
+# library("tidyverse") #ggplot2, purrr, dplyr, tidyr mostly
+# library("cowplot") #clean up ggplots ands plotgrid
+# library("M3Drop") #for BrenneckeGetVariableGenes
+# 
+# # Cluster Determination -------------------------------------------------------
+# library("factoextra") #for fviz_nbclust
+# library("NbClust") #to automate cluster determination for each dataset
+# # Clustering ------------------------------------------------------------------
+# library("BiocGenerics") # This is used for clustering assessment
+# library("pvclust") #for pvclust
+# library("dendextend") #for cutree coloring dendrograms
+# library("NMF") #used for calculating purity metric
+# library("clues") #used for calculating concurrance metrics
+# 
+# # Classification --------------------------------------------------------------
+#   #install.packages("caret", dependencies = c("Depends", "Suggests"))
+# library("caret") # for preProcess and supervised ML models
+# 
+# library("devtools")
+```
+
+
+```{r Show info to aid reproducibility}
+sessionInfo()
+```
+
+# User set up -----------------------------------------------------------------
+```{r Conrol block}
+#What should happen to plots?
+#save
+#show
+
+#What should happen to output data?
+#save
+#show
+
+run.snn.cliq <- TRUE # SNN Cliq depend on python. This scritp is written to work on windows and hasn't been tested on Unix/Macos. Needed file is in ../Py. At the point of writing, python version 3.7 has beed tested and works
+write.to.dir <- paste0(getwd(), "/inst/extdata/output_files/")
+use.seed <- 8743436
+```
+
+```{r eval=FALSE, include=FALSE}
+#28,459 
+M <- read.csv(paste0(getwd(),"/inst/extdata/scSeq.csv"), row.names = "id", header = TRUE)
+N <- read.csv("C:/Users/drk8b9/Desktop/singleCell_kallisto_counts.csv", row.names = "id", header = TRUE)
+
+dim(M)
+M <- as.matrix(M) 
+M[rowSums(M) != 0, ] %>% dim()
+M <- t(M)
+predict(preProcess(M, method = c("zv")), M) %>% dim()
+predict(preProcess(M, method = c("nzv")), M) %>% dim()
+
+dim(N)
+N <- as.matrix(N) 
+N[rowSums(N) != 0, ] %>% dim()
+N <- t(N)
+predict(preProcess(N, method = c("zv")), N) %>% dim()
+predict(preProcess(N, method = c("nzv")), N) %>% dim()
+
+```
+
+
+## our inputs: ================================================================
+```{r Pull in datasets}
+# Read in all data ------------------------------------------------------------
+k05 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.05.csv"), header = F) %>% as.data.frame()
+k2 <- read.csv(paste0(getwd(),"/inst/extdata/kallisto0.2.csv"), header = F) %>% as.data.frame()
+mrna_raw <- read.csv(paste0(getwd(),"/inst/extdata/RTqPCR.csv"), row.names = "Sample", header = TRUE) %>% as.data.frame()
+seq_raw <- read.csv(paste0(getwd(),"/inst/extdata/scSeq.csv"), row.names = "id", header = TRUE) %>% t() %>% as.data.frame()
+
+# Transform RTqPCR data -------------------------------------------------------
+mrna_raw <- predict(preProcess(mrna_raw, method = c("medianImpute", "zv")), mrna_raw)
+mrna_target <- predict(preProcess(mrna_raw, method = c("center", "scale")), mrna_raw)
+
+mrna_cell <- mrna_raw[,-1]
+mrna_cell <- as.data.frame(t(mrna_cell))
+mrna_cell <- predict(preProcess(mrna_cell, method = c("center", "scale")), mrna_cell)
+mrna_cell <- cbind(Cell = mrna_raw$Cell, as.data.frame(t(mrna_cell)))
+
+# Transform Seq data ----------------------------------------------------------
+
+seq_raw <- predict(preProcess(seq_raw, method = c("zv")), seq_raw)
+seq_target <- predict(preProcess(seq_raw, method = c("center", "scale")), seq_raw)
+# center and scale by cell
+seq_cell <- seq_raw
+seq_cell <- as.data.frame(t(seq_cell))
+seq_cell <- predict(preProcess(seq_cell, method = c("center", "scale")), seq_cell)
+seq_cell <- as.data.frame(t(seq_cell))
+# Set up a cell id vector to use in each dataframe
+split.names <- rownames(seq_raw) %>% strsplit("[.]")
+split.names <- unlist(split.names)
+Cell.ids <- split.names[seq(1, to = length(split.names), by = 2)]
+# Give each dataset a `Cell` column
+seq_raw <- cbind(Cell = Cell.ids, seq_raw)
+seq_target <- cbind(Cell = Cell.ids, seq_target)
+seq_cell <- cbind(Cell = Cell.ids, seq_cell)
+
+
+## PCA ========================================================================
+# PCA can capture most of the variance
+
+#because the full seq is too much to work with locally:
+seq_pca <- prcomp(seq_cell[,-1], scale = FALSE)
+#fviz_eig(seq_pca, addlabels = TRUE)
+#factoextra::get_eigenvalue(seq_pca)
+
+seq_pca <- cbind(seq_cell$Cell, as.data.frame(seq_pca$x))
+seq_pca <- rename(seq_pca, Cell = `seq_cell$Cell`)
+
+## HVG ========================================================================
+#TODO determine if HVG is useful or if we should drop it.
+temp <- seq_raw[,-1]
+temp <- t(temp)
+
+x.data <- rowMeans(temp)
+y.data <- matrixStats::rowVars(temp)
+
+ggplot()+geom_point(aes(x = log10(x.data), y = log10(y.data)), shape = 1)
+
+#https://hemberg-lab.github.io/scRNA.seq.course/biological-analysis.html#feature-selection
+
+Brennecke_HVG <- M3Drop::BrenneckeGetVariableGenes(
+  temp,
+  fdr = 0.01,
+  minBiolDisp = 0.5
+)
+
+temp <- temp[(rownames(temp) %in% Brennecke_HVG), ]
+temp <- temp %>% t()
+seq_hvg <- cbind(Cell = seq_raw[,1], as.data.frame(temp))
+
+## Generate reduced seq sets ==================================================
+seq_raw_k05 <- seq_raw[, k05$V1]
+seq_target_k05 <- seq_target[, k05$V1]
+seq_cell_k05 <- seq_cell[, k05$V1]
+
+seq_raw_k2 <- seq_raw[, k2$V1]
+seq_target_k2 <- seq_target[, k2$V1]
+seq_cell_k2 <- seq_cell[, k2$V1]
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

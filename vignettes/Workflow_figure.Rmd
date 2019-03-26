@@ -1,0 +1,334 @@
+---
+title: "Untitled"
+author: "Daniel R. Kick"
+date: "March 13, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#https://mikeyharper.uk/flowcharts-in-r-using-diagrammer/
+#install.packages("DiagrammeR")
+library(DiagrammeR)
+```
+
+```{r}
+# A minimal plot
+DiagrammeR::grViz("digraph {
+  
+graph[layout = dot, rankdir = LR]
+
+a
+b
+c
+
+a -> b -> c
+}")
+```
+
+
+```{r}
+box1 [fillcolor = red]
+abc -> def [arrowhead = diamond]
+```
+
+```{r}
+DiagrammeR::grViz("digraph {
+
+graph [layout = dot, rankdir = LR]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = rectangle, style = filled, fillcolor = Linen]
+
+data1 [label = 'Dataset 1', shape = folder, fillcolor = Beige]
+data2 [label = 'Dataset 2', shape = folder, fillcolor = Beige]
+process [label =  'Process \n Data']
+statistical [label = 'Statistical \n Analysis']
+results [label= 'Results']
+
+# edge definitions with the node IDs
+{data1 data2}  -> process -> statistical -> results
+}")
+```
+
+Data processing (pcr)
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'RT-qPCR', shape = folder, fillcolor = Beige]
+
+
+data2 [label = 'Preprocessed', shape = folder, fillcolor = Beige]
+
+mi [label = 'Median \nImpute', shape = box, fillcolor = Linen]
+dzv [label = 'Drop \nZero \nVariance', shape = box, fillcolor = Linen]
+
+sc [label = 'Center \n& \nScale', shape = box, fillcolor = Linen]
+
+scol [label = 'by Cell', shape = folder, fillcolor = Beige]
+scell [label = 'by Transcript', shape = folder, fillcolor = Beige]
+
+# edge definitions with the node IDs
+{data1} -> mi -> dzv -> {data2 sc} 
+sc -> {scol scell}
+
+}")
+```
+
+Data processing (seq)
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'RNA-Seq', shape = folder, fillcolor = Beige]
+
+data2 [label = 'Preprocessed', shape = folder, fillcolor = Beige]
+
+mi [label = 'Median \nImpute', shape = box, fillcolor = Linen]
+dzv [label = 'Drop \nZero \nVariance', shape = box, fillcolor = Linen]
+
+sc [label = 'Center \n& \nScale', shape = box, fillcolor = Linen]
+
+scol [label = 'by Cell', shape = folder, fillcolor = Beige]
+scell [label = 'by Contig', shape = folder, fillcolor = Beige]
+
+diff1 [label = 'Differential \nExpression  \n0.05', shape = box, fillcolor = Linen]
+diff2 [label = 'Differential \nExpression  \n0.2', shape = box, fillcolor = Linen]
+
+cell05 [label = 'by Cell \n0.05', shape = folder, fillcolor = Beige]
+cont05 [label = 'by Conting \n0.05', shape = folder, fillcolor = Beige]
+r05 [label = 'Preprocessed \n0.05', shape = folder, fillcolor = Beige]
+
+cell2 [label = 'by Cell \n0.2', shape = folder, fillcolor = Beige]
+cont2 [label = 'by Conting \n0.2', shape = folder, fillcolor = Beige]
+r2 [label = 'Preprocessed \n0.2', shape = folder, fillcolor = Beige]
+
+# edge definitions with the node IDs
+{data1} -> mi -> dzv 
+dzv -> {data2 sc}
+
+sc -> {scol scell}
+{data2 scol scell} -> diff1 -> {cell05 cont05 r05}
+{data2 scol scell} -> diff2 -> {cell2 cont2 r2}
+
+
+}")
+
+
+
+
+
+
+```
+
+
+
+Cluster Estimation
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'Input', shape = folder, fillcolor = Beige]
+
+data2 [label = 'Cluster \nEstimates', shape = folder, fillcolor = Beige]
+
+min [label = 'Min = 2']
+max [label = 'Max = Obs/4']
+
+nbc [label = 'NbClust::NbClust()', shape = box, fillcolor = Linen]
+
+
+distances1 [label = 'Distance \nMetric', shape = circle]
+methods1 [label = 'Clustering \nMethod', shape = circle]
+
+
+# edge definitions with the node IDs
+{data1 min max distances1 methods1} -> nbc -> data2
+
+
+}")
+```
+
+Cluster Estimation (methods shown)
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'Input', shape = folder, fillcolor = Beige]
+
+min [label = 'Min = 2']
+max [label = 'Max = Obs/4']
+
+nbc [label = 'NbClust::NbClust()', shape = box, fillcolor = Linen]
+
+
+distances1 [label = 'Distance \nMetric', shape = circle]
+methods1 [label = 'Clustering \nMethod', shape = circle]
+
+data2 [label = 'Cluster \nEstimates', shape = folder, fillcolor = Beige]
+
+# edge definitions with the node IDs
+{data1 min max distances1 methods1} -> nbc -> data2
+
+{wardD wardD2 single complete average mcquitty median centroid kmeans} -> methods1
+{euclidean maximum manhattan canberra binary minkowski} -> distances1
+
+
+
+}")
+```
+
+
+
+Clustering
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'Input', shape = folder, fillcolor = Beige]
+
+centers [label = 'k = 11', shape = circle]
+kmeans [label = 'K-means', shape = box, fillcolor = Linen]
+
+neighbors [label = 'k = 3:9', shape = circle]
+distances1 [label = 'Distance \nMetric', shape = circle]
+snncliq [label = 'SNN-Cliq', shape = box, fillcolor = Linen]
+
+methods1 [label = 'Clustering \nMethod', shape = circle]
+distances2 [label = 'Distance \nMetric', shape = circle]
+hclust [label = 'Hierarchical \nClustering', shape = box, fillcolor = Linen]
+
+
+clusterings [label = 'Clusterings', shape = folder, fillcolor = Beige]
+
+
+rank [label = 'Jaccard \nIndex']
+
+rankings [label = 'Rankings', shape = folder, fillcolor = Beige]
+
+# edge definitions with the node IDs
+{data1} -> {kmeans snncliq hclust} -> clusterings -> rank -> rankings
+
+centers -> kmeans
+{neighbors distances1} -> snncliq
+{methods1 distances2} -> hclust
+
+}")
+```
+
+
+Clustering (methods shown)
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+centers [label = 'k = 11', shape = circle]
+kmeans [label = 'K-means', shape = box, fillcolor = Linen]
+
+neighbors [label = 'k = 3:9', shape = circle]
+distances1 [label = 'Distance \nMetric', shape = circle]
+snncliq [label = 'SNN-Cliq', shape = box, fillcolor = Linen]
+
+methods1 [label = 'Clustering \nMethod', shape = circle]
+distances2 [label = 'Distance \nMetric', shape = circle]
+hclust [label = 'Hierarchical \nClustering', shape = box, fillcolor = Linen]
+
+
+# edge definitions with the node IDs
+
+centers -> kmeans
+{neighbors distances1} -> snncliq
+{methods1 distances2} -> hclust
+
+{euclidean maximum manhattan canberra binary minkowski} -> distances1
+
+{euclidean maximum manhattan canberra binary minkowski correlation uncentered} -> distances2
+
+{wardD single complete average mcquitty median centroid wardD2} -> methods1
+
+}")
+```
+
+
+
+Classification (methods shown)
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'Input', shape = folder, fillcolor = Beige]
+
+glmnet [label = 'Lasso \nRegression', shape = box, fillcolor = Linen]
+mnnet [label = 'Mulitnomial \nNeural \nNetwork', shape = box, fillcolor = Linen]
+nnet [label = 'Neural \nNetwork', shape = box, fillcolor = Linen]
+knn [label = 'k-Nearest \nNeighbor', shape = box, fillcolor = Linen]
+ranger [label = 'Random \nForest', shape = box, fillcolor = Linen]
+svml [label = 'SVM \nLinear', shape = box, fillcolor = Linen]
+svmr [label = 'SVM \nRadial', shape = box, fillcolor = Linen]
+
+data2 [label = '5-fold CV \nAccuracy', shape = folder, fillcolor = Beige]
+
+
+# edge definitions with the node IDs
+data1 -> {glmnet mnnet nnet knn ranger svml svmr} -> data2
+
+
+}")
+```
+
+
+Classification (methods shown)
+```{r}
+DiagrammeR::grViz("digraph {
+graph [layout = dot]
+
+# define the global styles of the nodes. We can override these in box if we wish
+node [shape = circle, style = filled, fillcolor = LightSteelBlue]
+
+data1 [label = 'Input', shape = folder, fillcolor = Beige]
+
+glmnet [label = 'Lasso \nRegression', shape = box, fillcolor = Linen]
+mnnet [label = 'Mulitnomial \nNeural \nNetwork', shape = box, fillcolor = Linen]
+nnet [label = 'Neural \nNetwork', shape = box, fillcolor = Linen]
+knn [label = 'k-Nearest \nNeighbor', shape = box, fillcolor = Linen]
+ranger [label = 'Random \nForest', shape = box, fillcolor = Linen]
+svml [label = 'SVM \nLinear', shape = box, fillcolor = Linen]
+svmr [label = 'SVM \nRadial', shape = box, fillcolor = Linen]
+
+data2 [label = '5-fold CV \nAccuracy', shape = folder, fillcolor = Beige]
+
+
+# edge definitions with the node IDs
+data1 -> {glmnet mnnet nnet knn ranger svml svmr} -> data2
+{alpha lambda} -> glmnet
+decay -> mnnet
+{size decay} -> nnet
+k -> knn
+{mtry splitrule minNodeSize} -> ranger
+cost -> svml
+sigma -> svmr
+
+}")
+```
