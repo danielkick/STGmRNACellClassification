@@ -108,7 +108,11 @@ library("ggthemes") #color plots
 
 #Which sections should be run?
 # Visualizations
-# Cluster.estimation
+## Cluster.estimation ====
+run.estimate <- T
+save.estimate <- T
+load.estimate <- T
+
 # Clustering
 # Classification
 
@@ -314,7 +318,7 @@ seq_h2k[, 2:ncol(seq_h2k)] <- round(seq_h2k[, 2:ncol(seq_h2k)])
 
 
 code from djs to adapt
-```{r}
+```{r eval=FALSE, include=FALSE}
 # list.files("S:/Data_Daniel/ActiveProjects/stgmcc/inst/extdata/")
 # 
 # "Preamp_vs_noamp.csv"                   
@@ -451,7 +455,7 @@ ggplot(data6, aes(x = PCR, y = SEQ))+
 
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 # Heatmaps ----
 ## qRT-PCR ====
 d <- mrna_target
@@ -867,7 +871,7 @@ I'm packageing the above to (idealy) get a clean way to process and visualize ea
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 library(optCluster)
 # avail.methods <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota", "em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson", "sa.poisson")
 
@@ -1007,7 +1011,7 @@ d[base::order(d$weights, decreasing = T), ]$ranks
 
 ```
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 avail.methods.conti <- c("agnes", "clara", "diana", #"fanny", 
                          "hierarchical.average", "hierarchical.complete", "hierarchical.single", "hierarchical.ward", 
                          "kmeans", "model", "pam"#, #"som", 
@@ -1131,7 +1135,7 @@ out2
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 input.df = pca_hvg
 min.k = 2
 max.k = 10
@@ -1160,7 +1164,7 @@ out2
 
 
 
-```{r}
+```{r get clusters for each dataset}
 # # Test of tryCatch
 # mylist <- list(1, 2, 3, "e", 4)
 # outlist <- mylist
@@ -1219,6 +1223,7 @@ test_clMethods <- function(input.df = mrna_raw[, 2:5],
   return(outMethods)
 }
 
+if (run.estimate){
 
 
 data.sets <- list(
@@ -1285,7 +1290,7 @@ for (i in seq_along(data.sets)){
 
 ## Find optimal cluster for each
 
-clMethods.list[[1]] <- "all" #TODO
+# clMethods.list[[1]] <- "all" #TODO
 
 optCluster.list <- list(length(data.sets))
 for (i in seq_along(data.sets)){
@@ -1308,21 +1313,51 @@ optCluster.list[[i]] <-
 }
 
 
-out1 <- optCluster(
-      obj = mrna_target[,-1], 
-      nClust = seq(from = data.options[i, "min.k"], to = data.options[i, "max.k"], by = 1),
-      clMethods = c("kmeans", "model", "pam"), 
-      countData = F,
-      validation = "internal", #internal", "stability", "biological", "all"
-      hierMethod = "ward", #"average", "complete", "single", and "ward"
-      annotation = NULL, #Used in biological validation
-      clVerbose = FALSE, 
-      rankMethod = "CE", 
-      distance = "Spearman", 
-      importance = NULL, 
-      rankVerbose = FALSE)
 
-out1
+
+  
+}
+
+if (save.estimate){
+  
+  saveRDS(clMethods.list, file = paste0(write.to.dir,"clMethods.list.RDS"))
+  saveRDS(optCluster.list, file = paste0(write.to.dir,"optCluster.list.RDS"))
+  
+}
+
+if (load.estimate){
+  
+}
+
+
+# 
+# out1 <- optCluster(
+#       obj = mrna_raw[1:20,2:4], 
+#       nClust = seq(from = data.options[i, "min.k"], to = 13, by = 1),
+#       clMethods = c("da.nbinom", "sa.nbinom"), 
+#       countData = T,
+#       validation = "internal", #internal", "stability", "biological", "all"
+#       hierMethod = "ward", #"average", "complete", "single", and "ward"
+#       annotation = NULL, #Used in biological validation
+#       clVerbose = FALSE, 
+#       rankMethod = "CE", 
+#       distance = "Spearman", 
+#       importance = NULL, 
+#       rankVerbose = FALSE)
+# 
+# 
+# out1.a <- out1@rankAgg$top.list %>% as.data.frame()
+# names(out1.a) <- "output"
+# out1.a$rank <- 1:nrow(out1.a)
+# 
+# 
+# d <- separate(out1.a, output, c("Method", "k"), "-")
+# d$k <- as.numeric(d$k)
+# 
+# ggplot(d, aes(x = rank, y = k))+
+#   lemon::geom_pointline()+
+#   geom_point(aes(color = Method))
+
 ```
 
 
