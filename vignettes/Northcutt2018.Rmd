@@ -240,7 +240,7 @@ temp <- t(temp)
 
 Brennecke_HVG <- M3Drop::BrenneckeGetVariableGenes(
   temp,
-  fdr = 0.01,
+  fdr = 0.2, #changed to .2 to match the FDR Dr. HH provided us
   minBiolDisp = 0.5
 )
 
@@ -252,11 +252,205 @@ seq_hvg <- seq_raw[, names(seq_raw) %in% c("Cell", Brennecke_HVG)]
 
 seq_hvg_target <- predict(preProcess(seq_hvg, method = c("center", "scale")), seq_hvg)
 
+
+
+library(edgeR)
+# https://combine-australia.github.io/RNAseq-R/06-rnaseq-day1.html
+y <- seq_raw[,2:ncol(seq_raw)]
+y <- as.matrix(y)
+y <- t(y)
+
+# Get log2 counts per million
+logcounts <- cpm(y,log=TRUE)
+# Check distributions of samples using boxplots
+# boxplot(logcounts, xlab="", ylab="Log2 counts per million",las=2)
+# # Let's add a blue horizontal line that corresponds to the median logCPM
+# abline(h=median(logcounts),col="blue")
+# title("Boxplots of logCPMs (unnormalised)")
+
+# We estimate the variance for each row in the logcounts matrix
+var_genes <- apply(logcounts, 1, var)
+# head(var_genes)
+
+# Get the gene names for the top 500 most variable genes
+select_var <- names(sort(var_genes, decreasing=TRUE))[1:2000]
+# head(select_var)
+
+seq_h2k <- seq_raw[, names(seq_raw) %in% c("Cell", select_var)]
+seq_h2k_target <- predict(preProcess(seq_h2k, method = c("center", "scale")), seq_h2k)
+```
+
+## Add PCA transforms
+```{r}
+mk_pca_transform <- function(d = input.df){
+  Cell <- d[,1]
+  d <- prcomp(d[,-1], scale = FALSE)
+  d <- cbind(Cell, d$x)
+  return(d)
+}
+
+pca_mrna <- mk_pca_transform(d = mrna_raw)
+pca_mrna_target <- mk_pca_transform(d = mrna_target)
+pca_seq <- mk_pca_transform(d = seq_raw)
+pca_seq_target <- mk_pca_transform(d = seq_target)
+pca_hvg <- mk_pca_transform(d = seq_hvg)
+pca_hvg_target <- mk_pca_transform(d = seq_hvg_target)
+pca_h2k <- mk_pca_transform(d = seq_h2k)
+pca_h2K_target <- mk_pca_transform(d = seq_h2k_target)
+
+```
+
+
+```{r round count data}
+#make sure data is in the right type
+mrna_raw[, 2:ncol(mrna_raw)] <- round(mrna_raw[, 2:ncol(mrna_raw)])
+seq_hvg[, 2:ncol(seq_hvg)] <- round(seq_hvg[, 2:ncol(seq_hvg)])
+seq_h2k[, 2:ncol(seq_h2k)] <- round(seq_h2k[, 2:ncol(seq_h2k)])
 ```
 
 
 
 # Visualizations of the data
+
+
+code from djs to adapt
+```{r}
+# list.files("S:/Data_Daniel/ActiveProjects/stgmcc/inst/extdata/")
+# 
+# "Preamp_vs_noamp.csv"                   
+# "STG-4genesSeqComp-qPCR.csv"             
+# "STG-4genesSeqComp-SEQ.csv"             
+# # "STG_LC_Absolute_Counts_allSTG-GM2f.csv"
+# 
+# 
+# 
+# 
+data1 <- read.csv("S:/Data_Daniel/ActiveProjects/stgmcc/inst/extdata/Preamp_vs_noamp.csv", header = TRUE)
+
+names(data1) <- c("Target", "Sample", "Unamp", "Amp")
+
+plt1 <- ggplot(data1, aes(x = Unamp, y = Amp, color = Target))+
+geom_point(size = 5, shape = 1, na.rm = TRUE)+
+labs(x = "Unamplified Cq", y = "Amplified Cq")+
+xlim(29,37)+
+ylim(17,27)
+#geom_smooth(method=lm)
+plot(plt1)
+
+
+plt2 <- ggplot(data1, aes(x = Unamp, y = Amp))+
+geom_point(size = 5, shape = 1, na.rm = TRUE)+
+labs(x = "Unamplified Cq", y = "Amplified Cq")+
+xlim(29,37)+
+ylim(17,27)+
+
+geom_smooth(method=lm)
+plot(plt2)
+
+corrPRE <- cor(data1[,3:4], use="complete.obs", method="pearson")
+
+
+data2 <- read.csv("S:/Data_Daniel/ActiveProjects/stgmcc/inst/extdata/STG-4genesSeqComp-qPCR.csv", header = TRUE)
+data3 <- read.csv("S:/Data_Daniel/ActiveProjects/stgmcc/inst/extdata/STG-4genesSeqComp-SEQ.csv", header = TRUE)
+data3 <- data3[, !(names(data3) %in% c("KCNK1",  "NMDA2B", "ChAT", "vAChT"))]
+names(data2)[1] <- names(data3)[1] <- "Cell"
+names(data3) <- c("Cell", "Sample", "vAChT", "NMDA2B", "ChAT", "KCNK1")
+
+data2$type <- "PCR"
+data3$type <- "SEQ"
+
+data4 <- full_join(data2, data3)
+# data4 <- gather(data4, "target", "Count", 3:6)
+# data4 <- data4[, -2]
+
+# ggplot(data4, aes(x = type, y = Count))+
+#   geom_point(size = 5, shape = 1, na.rm = TRUE)+
+#   facet_grid(Cell ~ target)
+#   # labs(x = "Unamplified Cq", y = "Amplified Cq")+
+#   # xlim(29,37)+
+#   # ylim(17,27)+
+#   # geom_smooth(method=lm)
+
+
+plot_grid(plotlist = list(
+  ggplot(data4[data4$type == "SEQ", ], aes(x = Cell, y = ChAT, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+  ggplot(data4[data4$type == "PCR", ], aes(x = Cell, y = ChAT, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+  ggplot(data4[data4$type == "SEQ", ], aes(x = Cell, y = vAChT, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+  ggplot(data4[data4$type == "PCR", ], aes(x = Cell, y = vAChT, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+  ggplot(data4[data4$type == "SEQ", ], aes(x = Cell, y = NMDA2B, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+  ggplot(data4[data4$type == "PCR", ], aes(x = Cell, y = NMDA2B, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+  ggplot(data4[data4$type == "SEQ", ], aes(x = Cell, y = KCNK1, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+     scale_fill_brewer(type = "qual", palette = 3),
+
+  ggplot(data4[data4$type == "PCR", ], aes(x = Cell, y = KCNK1, fill = Cell)) +
+    geom_boxplot() +
+    geom_point(size = 2, shape = 1, na.rm = TRUE) + theme(legend.position = "")+    scale_fill_brewer(type = "qual", palette = 3)
+), nrow = 2, ncol = 4)
+
+
+
+data4 <- data4[,-2]
+for (cell in unique(data4$Cell)){
+  for (i in 2:5){
+  data4[data4$type == "PCR" & data4$Cell == cell, i] <- mean(data4[data4$type == "PCR" & data4$Cell == cell, i], na.rm = T)#/sd(data4[data4$type == "PCR" & data4$Cell == cell, i], na.rm = T)
+
+  data4[data4$type == "SEQ" & data4$Cell == cell, i] <- mean(data4[data4$type == "SEQ" & data4$Cell == cell, i], na.rm = T)#/sd(data4[data4$type == "SEQ" & data4$Cell == cell, i], na.rm = T)
+  }
+}
+data4 <- data4[!duplicated(data4),]
+data4.seq <- data4[data4$type == "SEQ", ]
+data4.pcr <- data4[data4$type == "PCR", ]
+
+data4.ratio <- data4.pcr[,-6]
+data4.ratio[, 2:5] <- data4.seq[, 2:5] / data4.pcr[, 2:5]
+
+
+ggplot(gather(data4.ratio, target, seqTOpcr, 2:5), 
+       aes(x = Cell, y = seqTOpcr, group = Cell, color = Cell))+
+  geom_point(size = 2)+
+  facet_grid(.~target)+
+  scale_color_brewer(type = "qual", palette = 3)
+
+
+
+data5 <- gather(data4, target, mean, 2:5)
+ggplot(data5, aes(x = type, y = mean, group = Cell, color = Cell))+
+  geom_line(size = 2)+
+  facet_grid(.~target)+
+  scale_color_brewer(type = "qual", palette = 3)
+
+
+data6 <- spread(data5, type, mean)
+ggplot(data6, aes(x = PCR, y = SEQ, color = Cell))+
+  geom_smooth(method = lm)+
+  geom_point(size = 2)+
+  facet_grid(.~Cell)+
+  scale_color_brewer(type = "qual", palette = 3)
+
+
+ggplot(data6, aes(x = PCR, y = SEQ))+
+  geom_smooth(method = lm)+
+  geom_point(aes(color = Cell), size = 2)+
+  #facet_grid(.~Cell)+
+  scale_color_brewer(type = "qual", palette = 3)
+
+```
+
+
+
 ```{r}
 # Heatmaps ----
 ## qRT-PCR ====
@@ -339,404 +533,343 @@ factoextra::get_eigenvalue(d)
 
 ```
 
-
-
-
 # Cluster Estimation 
 ```{r automated approach}
-## using NbClust to churn out predictions =====================================
-automated_clust_k <- function(current.df = use.input.df[, -1], current.max.k = max.k) {
-  # nb <- NbClust(use.input.df, diss="NULL", distance = "euclidean",
-  #        min.nc=2, max.nc=max.k, method = "kmeans",
-  #        index = "alllong", alphaBeale = 0.1)
-  # hist(nb$Best.nc[1,], breaks = max(na.omit(nb$Best.nc[1,])))
-
-  # nb <- NbClust(use.input.df[, -1], distance = "euclidean", min.nc=2, max.nc=max.k, method = "ward.D", index = "all")
-  # hist(nb$Best.nc[1,],
-  #     breaks = max(na.omit(nb$Best.nc[1,])))
-
-  avail.methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans") #TODO this is fucking up the seq data. at least one of the methods (maybe "single"?) is breaking the loop
-  avail.distances <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-  #Ideally this should be vectorized to speed up the process
-  cluster.estimates <- list()
-  for (use.method in avail.methods) {
-    list1 <- list()
-    for (use.distance in avail.distances) {
-      nb <- NbClust(current.df,
-        distance = use.distance,
-        min.nc = 2, max.nc = current.max.k,
-        method = use.method, index = "all" #FIXME shouldn't method be use.method?
-      )
-      list1[[length(list1) + 1]] <- nb$Best.nc["Number_clusters", ]
-    }
-    cluster.estimates[[length(cluster.estimates) + 1]] <- list1
-  }
-
-  new.df <- as.data.frame(matrix(nrow = length(avail.methods) * length(avail.distances), ncol = 28))
-  new.df.names <- c("Method", "Distance", names(cluster.estimates[[1]][[1]]))
-  names(new.df) <- new.df.names
-  for (i in seq_along(avail.methods)) {
-    for (j in seq_along(avail.distances)) {
-      row.num.to.use <- length(avail.methods) * (i - 1) + j
-      len.obj <- length(cluster.estimates[[i]][[j]])
-
-      new.df[row.num.to.use, 1] <- avail.methods[i]
-      new.df[row.num.to.use, 2] <- avail.distances[j]
-
-      new.df[row.num.to.use, seq(from = 3, length.out = len.obj)] <- cluster.estimates[[i]][[j]]
-    }
-  }
-  return(new.df)
-}
+# ## using NbClust to churn out predictions =====================================
+# automated_clust_k <- function(current.df = use.input.df[, -1], current.max.k = max.k) {
+#   # nb <- NbClust(use.input.df, diss="NULL", distance = "euclidean",
+#   #        min.nc=2, max.nc=max.k, method = "kmeans",
+#   #        index = "alllong", alphaBeale = 0.1)
+#   # hist(nb$Best.nc[1,], breaks = max(na.omit(nb$Best.nc[1,])))
+# 
+#   # nb <- NbClust(use.input.df[, -1], distance = "euclidean", min.nc=2, max.nc=max.k, method = "ward.D", index = "all")
+#   # hist(nb$Best.nc[1,],
+#   #     breaks = max(na.omit(nb$Best.nc[1,])))
+# 
+#   avail.methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans") #TODO this is fucking up the seq data. at least one of the methods (maybe "single"?) is breaking the loop
+#   avail.distances <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+#   #Ideally this should be vectorized to speed up the process
+#   cluster.estimates <- list()
+#   for (use.method in avail.methods) {
+#     list1 <- list()
+#     for (use.distance in avail.distances) {
+#       nb <- NbClust(current.df,
+#         distance = use.distance,
+#         min.nc = 2, max.nc = current.max.k,
+#         method = use.method, index = "all" #FIXME shouldn't method be use.method?
+#       )
+#       list1[[length(list1) + 1]] <- nb$Best.nc["Number_clusters", ]
+#     }
+#     cluster.estimates[[length(cluster.estimates) + 1]] <- list1
+#   }
+# 
+#   new.df <- as.data.frame(matrix(nrow = length(avail.methods) * length(avail.distances), ncol = 28))
+#   new.df.names <- c("Method", "Distance", names(cluster.estimates[[1]][[1]]))
+#   names(new.df) <- new.df.names
+#   for (i in seq_along(avail.methods)) {
+#     for (j in seq_along(avail.distances)) {
+#       row.num.to.use <- length(avail.methods) * (i - 1) + j
+#       len.obj <- length(cluster.estimates[[i]][[j]])
+# 
+#       new.df[row.num.to.use, 1] <- avail.methods[i]
+#       new.df[row.num.to.use, 2] <- avail.distances[j]
+# 
+#       new.df[row.num.to.use, seq(from = 3, length.out = len.obj)] <- cluster.estimates[[i]][[j]]
+#     }
+#   }
+#   return(new.df)
+# }
 ```
 
 ```{r iteratively call function}
-# Initial Setup ---------------------------------------------------------------
-#use.input.df <- mrna_raw #mrna_cell #mrna_target #mrna_raw
-#name.prefix <- "raw_qpcr" #"cell_qpcr" #"target_qpcr" #"raw_qpcr"
-#max.k <- (nrow(use.input.df)/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
-
-use.datasets <- list(mrna_raw, mrna_target, mrna_cell, 
-                     seq_pca, seq_target, seq_cell, seq_hvg,
-                     seq_raw_k05, seq_target_k05, seq_cell_k05,
-                     seq_raw_k2, seq_target_k2, seq_cell_k2
-                     )
-use.names <- list("mrna_raw", "mrna_target", "mrna_cell", 
-                     "seq_pca", "seq_target", "seq_cell", "seq_hvg", 
-                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
-                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2")
-# guess_clust_list <- list()
-# for (i in seq(from = 1, to = length(use.datasets))){
+# # Initial Setup ---------------------------------------------------------------
+# #use.input.df <- mrna_raw #mrna_cell #mrna_target #mrna_raw
+# #name.prefix <- "raw_qpcr" #"cell_qpcr" #"target_qpcr" #"raw_qpcr"
+# #max.k <- (nrow(use.input.df)/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
+# 
+# use.datasets <- list(mrna_raw, mrna_target, mrna_cell, 
+#                      seq_pca, seq_target, seq_cell, seq_hvg,
+#                      seq_raw_k05, seq_target_k05, seq_cell_k05,
+#                      seq_raw_k2, seq_target_k2, seq_cell_k2
+#                      )
+# use.names <- list("mrna_raw", "mrna_target", "mrna_cell", 
+#                      "seq_pca", "seq_target", "seq_cell", "seq_hvg", 
+#                      "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
+#                      "seq_raw_k2", "seq_target_k2", "seq_cell_k2")
+# # guess_clust_list <- list()
+# # for (i in seq(from = 1, to = length(use.datasets))){
+# #   max.k <- (nrow(use.datasets[[i]])/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
+# #   guess_clust_list[[length(guess_clust_list)+1]] <- try(
+# #     automated_clust_k(current.df = use.datasets[[i]][,-1], current.max.k = max.k)
+# #   )
+# # }
+# 
+# # TODO uncomment to get csv 
+# # walk(seq_along(guess_clust_list), function(x){
+# #   write.csv(guess_clust_list[[x]], file = paste0(write.to.dir, use.names[[x]], "_kEstimate.csv"))
+# # })
+# 
+# 
+# # estimated time to run
+# # ((4.004993/8)*702)/60
+# # 5.857302 hours
+# 
+# avail.methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans") #TODO this is fucking up the seq data. at least one of the methods (maybe "single"?) is breaking the loop
+# avail.distances <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# 
+# tic <- Sys.time()
+# output.list <- list()
+# for (i in seq_along(use.datasets)){
 #   max.k <- (nrow(use.datasets[[i]])/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
-#   guess_clust_list[[length(guess_clust_list)+1]] <- try(
-#     automated_clust_k(current.df = use.datasets[[i]][,-1], current.max.k = max.k)
-#   )
+#   
+#   list_j <- list()
+# 
+#   for (j in seq_along(avail.methods)){
+#     list_k <- list()
+#     
+#     for (k  in seq_along(avail.distances)){
+#       # i = j = k = 1
+#       current.df <- use.datasets[[i]][,-1]
+#       use.method <- avail.methods[j]
+#       use.distance <- avail.distances[k]
+#       
+#       list_k[[k]] <-  try(
+#         NbClust(current.df,
+#         distance = use.distance,
+#         min.nc = 2, max.nc = max.k,
+#         method = use.method, index = "all"
+#         )$Best.nc["Number_clusters", ]
+#       )
+#     }
+#     list_j[[j]] <- list_k
+#   }
+#   output.list[[i]] <- list_j
 # }
-
-# TODO uncomment to get csv 
-# walk(seq_along(guess_clust_list), function(x){
-#   write.csv(guess_clust_list[[x]], file = paste0(write.to.dir, use.names[[x]], "_kEstimate.csv"))
-# })
-
-
-# estimated time to run
-# ((4.004993/8)*702)/60
-# 5.857302 hours
-
-avail.methods <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans") #TODO this is fucking up the seq data. at least one of the methods (maybe "single"?) is breaking the loop
-avail.distances <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-
-tic <- Sys.time()
-output.list <- list()
-for (i in seq_along(use.datasets)){
-  max.k <- (nrow(use.datasets[[i]])/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
-  
-  list_j <- list()
-
-  for (j in seq_along(avail.methods)){
-    list_k <- list()
-    
-    for (k  in seq_along(avail.distances)){
-      # i = j = k = 1
-      current.df <- use.datasets[[i]][,-1]
-      use.method <- avail.methods[j]
-      use.distance <- avail.distances[k]
-      
-      list_k[[k]] <-  try(
-        NbClust(current.df,
-        distance = use.distance,
-        min.nc = 2, max.nc = max.k,
-        method = use.method, index = "all"
-        )$Best.nc["Number_clusters", ]
-      )
-    }
-    list_j[[j]] <- list_k
-  }
-  output.list[[i]] <- list_j
-}
-print(Sys.time()-tic)
-
-
-#saveRDS(output.list, file = paste0(write.to.dir,"clustering_list.RDS"))
+# print(Sys.time()-tic)
+# 
+# 
+# #saveRDS(output.list, file = paste0(write.to.dir,"clustering_list.RDS"))
 ```
 
 ```{r}
-#backup <- output.list
-
-i = 1
-j = 1
-k = 1
-
-
-
-# for (i in seq_along(use.datasets)){
-for (i in 1:3){
-  
-  df_j <- data.frame(matrix(NA, nrow = 0, ncol = 5))
-  names(df_j) <- c("k.method", "method", "data", "distance", "prediction")
-for (j in seq_along(avail.methods)){
-
-  df_k <- as.data.frame(matrix(NA, nrow = 26, ncol = length(avail.distances)))
-  names(df_k) <- avail.distances
-for (k in seq_along(avail.distances)){
-  print(paste0(as.character(i), "-",
-               as.character(j), "-",
-               as.character(k)))
-  df_k[, k] <- try(
-    output.list[[i]][[j]][[k]] %>% as.data.frame()
-    )
-  
-}
-  df_k$k.method <- c("KL", "CH", "Hartigan", "CCC", "Scott", 
-                   "Marriot", "TrCovW", "TraceW", "Friedman", "Rubin", 
-                   "Cindex", "DB", "Silhouette", "Duda", "PseudoT2", 
-                   "Beale", "Ratkowsky", "Ball", "PtBiserial", "Frey", 
-                   "McClain", "Dunn", "Hubert", "SDindex", "Dindex", 
-                   "SDbw")
-  # distance is already taken care of with naming
-  df_k$method <- avail.methods[[j]]
-  df_k$data <- use.names[[i]]
-  df_k_long <- gather(df_k, key = distance, value = prediction, 1:6)
-
-  df_j <-   base::rbind(df_j, df_k_long)
-}
-
-}
-
-ggplot(df_j, aes(x = method, y = prediction, color = (df_j$prediction == 11)))+
-  geom_point(position = position_jitter(width = 0.1, height = 0.0),
-             alpha = 0.5)+
-  #geom_violin()+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(legend.position = "")+
-  facet_grid(.~distance)
-
-
-
-ggplot(df_j, aes(x = method, y = k.method, color = (df_j$prediction == 11)))+
-  geom_point(shape = 15, size = 2)+
-  #geom_violin()+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  theme(legend.position = "")+
-  facet_grid(.~distance)
-
-ggplot(df_j, aes(x = method, y = k.method, color = as.factor(prediction)))+
-  geom_point(data = df_j[df_j$prediction == 11, ], aes(x = method, y = k.method),
-             #shape = 0, 
-             shape = 15, alpha = 1,
-             size = 2, color = "black")+
-  geom_point(shape = 15, 
-             size = 2)+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  facet_grid(.~distance)
-
-
-ggplot(df_j, aes(x = method, y = k.method, color = as.factor(prediction)))+
-  geom_point(data = df_j[df_j$prediction == 11, ], aes(x = method, y = k.method),
-             #shape = 0, 
-             shape = 15, alpha = 1,
-             size = 2, color = "black")+
-  theme_dark()+
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  facet_grid(.~distance)
-
-ggplot(df_j, aes(x = prediction))+
-  geom_histogram(binwidth = 1)+
-  geom_histogram(data = df_j[df_j$prediction == 11, ], 
-                 aes(x = prediction), 
-                 binwidth = 1, 
-                 fill = "red")
-
-
+# #backup <- output.list
+# 
+# i = 1
+# j = 1
+# k = 1
+# 
+# 
+# 
+# # for (i in seq_along(use.datasets)){
+# for (i in 1:3){
+#   
+#   df_j <- data.frame(matrix(NA, nrow = 0, ncol = 5))
+#   names(df_j) <- c("k.method", "method", "data", "distance", "prediction")
+# for (j in seq_along(avail.methods)){
+# 
+#   df_k <- as.data.frame(matrix(NA, nrow = 26, ncol = length(avail.distances)))
+#   names(df_k) <- avail.distances
+# for (k in seq_along(avail.distances)){
+#   print(paste0(as.character(i), "-",
+#                as.character(j), "-",
+#                as.character(k)))
+#   df_k[, k] <- try(
+#     output.list[[i]][[j]][[k]] %>% as.data.frame()
+#     )
+#   
+# }
+#   df_k$k.method <- c("KL", "CH", "Hartigan", "CCC", "Scott", 
+#                    "Marriot", "TrCovW", "TraceW", "Friedman", "Rubin", 
+#                    "Cindex", "DB", "Silhouette", "Duda", "PseudoT2", 
+#                    "Beale", "Ratkowsky", "Ball", "PtBiserial", "Frey", 
+#                    "McClain", "Dunn", "Hubert", "SDindex", "Dindex", 
+#                    "SDbw")
+#   # distance is already taken care of with naming
+#   df_k$method <- avail.methods[[j]]
+#   df_k$data <- use.names[[i]]
+#   df_k_long <- gather(df_k, key = distance, value = prediction, 1:6)
+# 
+#   df_j <-   base::rbind(df_j, df_k_long)
+# }
+# 
+# }
+# 
+# ggplot(df_j, aes(x = method, y = prediction, color = (df_j$prediction == 11)))+
+#   geom_point(position = position_jitter(width = 0.1, height = 0.0),
+#              alpha = 0.5)+
+#   #geom_violin()+
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+#   theme(legend.position = "")+
+#   facet_grid(.~distance)
+# 
+# 
+# 
+# ggplot(df_j, aes(x = method, y = k.method, color = (df_j$prediction == 11)))+
+#   geom_point(shape = 15, size = 2)+
+#   #geom_violin()+
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+#   theme(legend.position = "")+
+#   facet_grid(.~distance)
+# 
+# ggplot(df_j, aes(x = method, y = k.method, color = as.factor(prediction)))+
+#   geom_point(data = df_j[df_j$prediction == 11, ], aes(x = method, y = k.method),
+#              #shape = 0, 
+#              shape = 15, alpha = 1,
+#              size = 2, color = "black")+
+#   geom_point(shape = 15, 
+#              size = 2)+
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+#   facet_grid(.~distance)
+# 
+# 
+# ggplot(df_j, aes(x = method, y = k.method, color = as.factor(prediction)))+
+#   geom_point(data = df_j[df_j$prediction == 11, ], aes(x = method, y = k.method),
+#              #shape = 0, 
+#              shape = 15, alpha = 1,
+#              size = 2, color = "black")+
+#   theme_dark()+
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+#   facet_grid(.~distance)
+# 
+# ggplot(df_j, aes(x = prediction))+
+#   geom_histogram(binwidth = 1)+
+#   geom_histogram(data = df_j[df_j$prediction == 11, ], 
+#                  aes(x = prediction), 
+#                  binwidth = 1, 
+#                  fill = "red")
+# 
+# 
 
 ```
 
 I'm packageing the above to (idealy) get a clean way to process and visualize each of these
 
 ```{r}
-
-use.datasets <- list(mrna_raw, mrna_target, 
-                     # seq_pca, seq_target, 
-                     seq_hvg, seq_hvg_target)
-
-use.names <- list("mrna_raw", "mrna_target", 
-                  # "seq_pca", "seq_target",  
-                   "seq_hvg", "seq_hvg_target")
-
-
-
-explict_iter_nbclust <- function(
-  use.datasets = mrna_raw, #note this should only ever be one value
-  avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
-  avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-){
-  tic <- Sys.time()
-  output.list <- list()
-    max.k <- (nrow(use.datasets)/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
-    
-    list_j <- list()
-  
-    for (j in seq_along(avail.methods)){
-      list_k <- list()
-      
-      for (k  in seq_along(avail.distances)){
-        # i = j = k = 1
-        current.df <- use.datasets[,-1]
-        use.method <- avail.methods[j]
-        use.distance <- avail.distances[k]
-        
-        print(paste0(use.method, "-",
-                     use.distance))
-        
-        list_k[[k]] <-  try(
-          NbClust(current.df,
-          distance = use.distance,
-          min.nc = 2, max.nc = max.k,
-          method = use.method, index = "all"
-          )$Best.nc["Number_clusters", ]
-        )
-      }
-      list_j[[j]] <- list_k
-    }
-  return(list_j)
-    
-  print(Sys.time()-tic)
-}
-
-# d01 <- 
+# 
+# use.datasets <- list(mrna_raw, mrna_target, 
+#                      # seq_pca, seq_target, 
+#                      seq_hvg, seq_hvg_target)
+# 
+# use.names <- list("mrna_raw", "mrna_target", 
+#                   # "seq_pca", "seq_target",  
+#                    "seq_hvg", "seq_hvg_target")
+# 
+# 
+# 
+# explict_iter_nbclust <- function(
+#   use.datasets = mrna_raw, #note this should only ever be one value
+#   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
+#   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# ){
+#   tic <- Sys.time()
+#   output.list <- list()
+#     max.k <- (nrow(use.datasets)/4) %>% ceiling() #assume at least 4 cells of the same type in each sample.
+#     
+#     list_j <- list()
+#   
+#     for (j in seq_along(avail.methods)){
+#       list_k <- list()
+#       
+#       for (k  in seq_along(avail.distances)){
+#         # i = j = k = 1
+#         current.df <- use.datasets[,-1]
+#         use.method <- avail.methods[j]
+#         use.distance <- avail.distances[k]
+#         
+#         print(paste0(use.method, "-",
+#                      use.distance))
+#         
+#         list_k[[k]] <-  try(
+#           NbClust(current.df,
+#           distance = use.distance,
+#           min.nc = 2, max.nc = max.k,
+#           method = use.method, index = "all"
+#           )$Best.nc["Number_clusters", ]
+#         )
+#       }
+#       list_j[[j]] <- list_k
+#     }
+#   return(list_j)
+#     
+#   print(Sys.time()-tic)
+# }
+# 
+# # d01 <- 
+# # explict_iter_nbclust(
+# #   use.datasets = mrna_raw,
+# #   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
+# #   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# # )
+# # 
+# # d02 <- 
+# # explict_iter_nbclust(
+# #   use.datasets = mrna_target,
+# #   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
+# #   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# # )
+# # 
+# # d03 <- 
+# # explict_iter_nbclust(
+# #   use.datasets = mrna_cell,
+# #   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
+# #   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# # )
+# 
+# # for PCA claims there are too many missing values. Is this because some are near zero? That doe
+# 
 # explict_iter_nbclust(
-#   use.datasets = mrna_raw,
+#   use.datasets = seq_hvg_target[,-1],
+#   avail.methods = c("ward.D"),
+#   avail.distances = c("euclidean")
+#   )
+# 
+# for (i in c("kl", "ch", "hartigan", "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin", "cindex", "db", "silhouette", "duda", "pseudot2", "beale", "ratkowsky", "ball", "ptbiserial", "gap", "frey", "mcclain", "gamma", "gplus", "tau", "dunn", "hubert", "sdindex", "dindex", "sdbw")){
+# try(
+# NbClust(seq_hvg[,-1],
+#           distance = "euclidean",
+#           min.nc = 1, max.nc = 12,
+#           method = "ward.D", index = i
+#           ) 
+# )
+# }
+# 
+# d04 <- 
+# explict_iter_nbclust(
+#   use.datasets = seq_pca,
 #   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
 #   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
 # )
 # 
-# d02 <- 
+# d05 <- 
 # explict_iter_nbclust(
-#   use.datasets = mrna_target,
+#   use.datasets = seq_target,
 #   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
 #   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
 # )
 # 
-# d03 <- 
+# d06 <- 
 # explict_iter_nbclust(
-#   use.datasets = mrna_cell,
+#   use.datasets = seq_cell,
 #   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
 #   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
 # )
-
-# for PCA claims there are too many missing values. Is this because some are near zero? That doe
-
-explict_iter_nbclust(
-  use.datasets = seq_hvg_target[,-1],
-  avail.methods = c("ward.D"),
-  avail.distances = c("euclidean")
-  )
-
-for (i in c("kl", "ch", "hartigan", "ccc", "scott", "marriot", "trcovw", "tracew", "friedman", "rubin", "cindex", "db", "silhouette", "duda", "pseudot2", "beale", "ratkowsky", "ball", "ptbiserial", "gap", "frey", "mcclain", "gamma", "gplus", "tau", "dunn", "hubert", "sdindex", "dindex", "sdbw")){
-try(
-NbClust(seq_hvg[,-1],
-          distance = "euclidean",
-          min.nc = 1, max.nc = 12,
-          method = "ward.D", index = i
-          ) 
-)
-}
-
-d04 <- 
-explict_iter_nbclust(
-  use.datasets = seq_pca,
-  avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
-  avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-)
-
-d05 <- 
-explict_iter_nbclust(
-  use.datasets = seq_target,
-  avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
-  avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-)
-
-d06 <- 
-explict_iter_nbclust(
-  use.datasets = seq_cell,
-  avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
-  avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-)
-
-d07 <- 
-explict_iter_nbclust(
-  use.datasets = seq_hvg,
-  avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
-  avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
-)
-                     
-
-
-
+# 
+# d07 <- 
+# explict_iter_nbclust(
+#   use.datasets = seq_hvg,
+#   avail.methods = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid", "kmeans"),
+#   avail.distances = c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# )
+#                      
+# 
+# 
+# 
 
 ```
 
-
 ```{r}
 library(optCluster)
-
-
-## This example may take a few minutes to compute
-## Obtain Dataset
-data(arabid)
-## Normalize Data with Respect to Library Size
-obj <- t(t(arabid)/colSums(arabid))
-
-## Analysis of Normalized Data using Internal and Stability Validation Measures
-norm1 <- optCluster(obj, 2:4, clMethods = "all")
-aggregPlot(norm1)
-
-
-
-## These examples may each take a few minutes to compute
-## Obtain Dataset
-data(arabid)
-## Analysis of Count Data using Internal and Stability Validation Measures
-count1 <- optCluster(arabid, 2:4, clMethods = "all", countData = TRUE)
-topMethod(count1)
-## Analysis of Normalized Data using Internal and Stability Validation Measures
-obj <- t(t(arabid)/colSums(arabid)) ## Normalized with Respect to Library Size
-norm1 <- optCluster(obj, 2:4, clMethods = "all")
-
-
-
-## These examples may each take a few minutes to compute
-## Obtain Dataset
-data(arabid)
-## Analysis of Count Data using Internal and Stability Validation Measures
-count1 <- optCluster(arabid, 2:4, clMethods = "all", countData = TRUE)
-summary(count1)
-# Obtain optimal clustering assignment
-optAssign(count1)
-## Normalize Data with Respect to Library Size
-obj <- t(t(arabid)/colSums(arabid))
-## Analysis of Normalized Data using Internal and Stability Validation Measures
-norm1 <- optCluster(obj, 2:4, clMethods = "all")
-summary(norm1)
-# Obtain optimal clustering assignment
-optAssign(norm1)
-#Obtain clustering assignment for diana with 2 clusters
-clusterResults(norm1, "diana", k = 2)$cluster
-## Analysis of Normalized Data using All Validation Measures
-if(require("Biobase") && require("annotate") && require("GO.db") &&
-require("org.At.tair.db")){
-norm2 <- optCluster(obj, 2:4, clMethods = "all", validation = "all",
-annotation = "org.At.tair.db")
-summary(norm2)
-}
-
-## Analysis with Only UPGMA using Internal and Stability Validation Measures
-hier1 <- optCluster(obj, 2:10, clMethods = "hierarchical")
-summary(hier1)
-
-
-
-avail.methods <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota", "em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson", "sa.poisson")
+# avail.methods <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota", "em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson", "sa.poisson")
 
 # #All methods here seem  to work fine
 
@@ -793,7 +926,6 @@ for(i in 1:nrow(conti.block)){
 
 
 
-count.block
 
 
 # for a dataset
@@ -875,8 +1007,6 @@ d[base::order(d$weights, decreasing = T), ]$ranks
 
 ```
 
-
-
 ```{r}
 avail.methods.conti <- c("agnes", "clara", "diana", #"fanny", 
                          "hierarchical.average", "hierarchical.complete", "hierarchical.single", "hierarchical.ward", 
@@ -940,12 +1070,7 @@ for (i in seq_along(avail.methods.conti)){
 
 for (i in seq_along(avail.methods.conti)){
   if (stringr::str_starts(avail.methods.conti[i], "hierarchical")){
-    
-    
-    
     add.to.name <- stringr::str_remove(avail.methods.conti[i], "hierarchical.")
-    
-    
     for (j in seq(from = 1, to =  length(output.list[[i]][[1]][3, ]))){
       temp.str <- stringr::str_split(output.list[[i]][[1]][3, j], "-")
       output.list[[i]][[1]][3, j] <- paste0(as.character(temp.str[[1]][1]), ".", add.to.name, "-", as.character(temp.str[[1]][2]))
@@ -963,7 +1088,6 @@ for (i in seq_along(output.list)){
 d <- as.data.frame(d)
 d <- separate(d, ranks, c("Method", "k"), "-")
 d$k <- as.numeric(d$k)
-
 
   
 library(ggstance) # for position_dodgev
@@ -1007,12 +1131,29 @@ out2
 ```
 
 
-
-
-
-
-
-
+```{r}
+input.df = pca_hvg
+min.k = 2
+max.k = 10
+clMethods = c("agnes", "clara", "diana", 
+                         "hierarchical", 
+                         "kmeans", "model", "pam")
+is.count = F
+  
+out2 <- optCluster(input.df,
+             seq(from = min.k, to = max.k, by = 1),
+             clMethods =clMethods,
+             countData = is.count,
+             validation = "internal", #internal", "stability", "biological", "all"
+             hierMethod = "ward", #"average", "complete", "single", and "ward"
+             annotation = NULL, #Used in biological validation
+             clVerbose = FALSE, #If TRUE, the progress of cluster validation will be produced as output.
+             rankMethod = "CE", #cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+             distance = "Spearman", #The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+             importance = NULL, 
+             rankVerbose = FALSE)
+out2
+```
 
 
 
@@ -1020,257 +1161,176 @@ out2
 
 
 ```{r}
-function (obj, nClust, clMethods = c("clara", "diana", "hierarchical", 
-    "kmeans", "model", "pam", "som", "sota"), countData = FALSE, 
-    validation = c("internal", "stability"), hierMethod = "average", 
-    annotation = NULL, clVerbose = FALSE, rankMethod = "CE", 
-    distance = "Spearman", importance = NULL, rankVerbose = FALSE, 
-    ...) 
-{
-    is.wholenumber <- function(x, tol = .Machine$double.eps^0.5) abs(x - 
-        round(x)) < tol
-    isCountData <- all(is.wholenumber(obj))
-    if (isTRUE(isCountData) && identical(countData, FALSE)) {
-        warning("obj is count data but countData is set to FALSE")
-    }
-    else if (identical(isCountData, FALSE) && isTRUE(countData)) {
-        warning("obj is not count data but countData is set to TRUE")
-    }
-    if ("all" %in% clMethods) {
-        if (isTRUE(countData)) {
-            clMethods <- c("em.nbinom", "da.nbinom", "sa.nbinom", 
-                "em.poisson", "da.poisson", "sa.poisson")
-        }
-        else {
-            if (hierMethod == "ward") {
-                clMethods <- c("agnes", "clara", "diana", "fanny", 
-                  "hierarchical", "kmeans", "model", "pam", "som", 
-                  "sota")
-            }
-            else {
-                clMethods <- c("clara", "diana", "fanny", "hierarchical", 
-                  "kmeans", "model", "pam", "som", "sota")
-            }
-        }
-    }
-    if ("all" %in% validation) {
-        validation <- c("internal", "stability", "biological")
-    }
-    nClustOut <- nClust
-    switch(class(obj), matrix = mat <- obj, ExpressionSet = mat <- Biobase::exprs(obj), 
-        data.frame = {
-            if (any(!sapply(obj, class) %in% c("numeric", "integer"))) stop("data frame 'obj' contains non-numeric data")
-            mat <- as.matrix(obj)
-        }, stop("argument 'obj' must be a matrix, data.frame, or ExpressionSet object"))
-    addArgs <- list(...)
-    if (exists(c("verbose"), where = addArgs)) {
-        stop("must specify 'verbose' as 'clVerbose' or 'rankVerbose'")
-    }
-    if (exists(c("method"), where = addArgs)) {
-        stop("must specify 'method' as 'hierMethod', or 'rankMethod'")
-    }
-    mbCountNames <- c("em.nbinom", "da.nbinom", "sa.nbinom", 
-        "em.poisson", "da.poisson", "sa.poisson")
-    mbCountMethods <- clMethods[clMethods %in% mbCountNames]
-    if (length(mbCountMethods) > 0) {
-        if (!requireNamespace("MBCluster.Seq")) {
-            stop("package 'MBCluster.Seq' required for clustering count data")
-        }
-        if (isTRUE(isCountData)) {
-            mbCount <- TRUE
-            clMethods <- clMethods[-which(clMethods %in% mbCountNames)]
-        }
-        else {
-            stop("obj is not count data and or more of the model based clustering algorithms for count data have been selected")
-        }
-        if (exists(c("Treatment"), where = addArgs)) {
-            uniqueTreatment <- addArgs$Treatment
-            addArgs <- addArgs[-which(names(addArgs) == "Treatment")]
-        }
-        else if (is.null(colnames(obj))) {
-            stop("column names or 'Treatment' argument must be used for clustering count data")
-        }
-        else {
-            uniqueTreatment <- colnames(obj)
-            if (length(uniqueTreatment) == length(unique(uniqueTreatment))) {
-                uniqueTreatment <- substr(uniqueTreatment, 1, 
-                  nchar(uniqueTreatment) - 1)
-            }
-        }
-        if (exists(c("Normalizer"), where = addArgs)) {
-            Normalizer <- addArgs$Normalizer
-            addArgs <- addArgs[-which(names(addArgs) == "Normalizer")]
-        }
-        else {
-            Normalizer <- NULL
-        }
-        if (exists(c("iter.max"), where = addArgs)) {
-            iter.max <- addArgs$iter.max
-            addArgs <- addArgs[-which(names(addArgs) == "iter.max")]
-        }
-        else {
-            iter.max <- 30
-        }
-        if (exists(c("TMP"), where = addArgs)) {
-            TMP <- addArgs$TMP
-            addArgs <- addArgs[-which(names(addArgs) == "TMP")]
-        }
-        else {
-            TMP <- NULL
-        }
-    }
-    else {
-        mbCount <- FALSE
-    }
-    RankAggreg.names <- c(names(formals(RankAggreg)), "p")
-    RankAggreg.args <- addArgs[names(addArgs) %in% RankAggreg.names]
-    if (length(RankAggreg.args) > 0) {
-        clValid.args <- addArgs[-which(names(addArgs) %in% RankAggreg.names)]
-    }
-    else {
-        clValid.args <- addArgs
-    }
-    if (exists(c("maxitems"), where = clValid.args)) {
-        maxitems <- clValid.args$maxitems
-        clValid.args <- clValid.args[-which(names(clValid.args) == 
-            "maxitems")]
-    }
-    else if (nrow(obj) > 600) {
-        maxitems <- nrow(obj)
-    }
-    else {
-        maxitems <- 600
-    }
-    if (length(clMethods) > 0) {
-        clVObj <- do.call("clValid", c(list(obj, nClust, clMethods, 
-            validation, method = hierMethod, annotation = annotation, 
-            verbose = clVerbose, maxitems = maxitems), clValid.args))
-        if (any(is.na(clVObj@measures))) {
-            stop("NA validation measures returned for at least one clustering algorithm \n  Rank aggregation cannot be performed")
-        }
-        clValResults <- clVObj@clusterObjs
-        measNames <- measNames(clVObj)
-        clAlgs <- clusterMethods(clVObj)
-        metric <- clVObj@metric
-        neighbSize <- clVObj@neighbSize
-        GOcategory <- clVObj@GOcategory
-        goTermFreq <- clVObj@goTermFreq
-    }
-    else {
-        measNames <- c(if ("stability" %in% validation) c("APN", 
-            "AD", "ADM", "FOM"), if ("internal" %in% validation) c("Connectivity", 
-            "Dunn", "Silhouette"), if ("biological" %in% validation) c("BHI", 
-            "BSI"))
-        clValResults <- list()
-        clAlgs <- vector()
-        if (exists(c("metric"), where = clValid.args)) {
-            metric <- clValid.args$metric
-        }
-        else {
-            metric <- "euclidean"
-        }
-        if (exists(c("neighbSize"), where = clValid.args)) {
-            neighbSize <- clValid.args$neighbSize
-        }
-        else {
-            neighbSize <- 10
-        }
-        if (exists(c("GOcategory"), where = clValid.args)) {
-            GOcategory <- clValid.args$GOcategory
-        }
-        else {
-            GOcategory <- "all"
-        }
-        if (exists(c("goTermFreq"), where = clValid.args)) {
-            goTermFreq <- clValid.args$goTermFreq
-        }
-        else {
-            goTermFreq <- 0.05
-        }
-        if (exists(c("dropEvidence"), where = clValid.args)) {
-            dropEvidence <- clValid.args$dropEvidence
-        }
-        else {
-            dropEvidence <- NULL
-        }
-    }
-    if (isTRUE(mbCount)) {
-        valMBCount <- mbCountVal(mat, Normalizer, uniqueTreatment, 
-            validation, measNames, nClust, metric, neighbSize, 
-            clVerbose, mbCountMethods, iter.max, TMP, annotation, 
-            GOcategory, goTermFreq, dropEvidence)
-        MBCountArray <- valMBCount$measures
-        MBCountCluster <- valMBCount$clusterObj
-    }
-    nClust <- as.character(nClust)
-    if (isTRUE(mbCount)) {
-        clAlgs <- c(clAlgs, mbCountMethods)
-        meas <- array(dim = c(length(measNames), length(nClust), 
-            length(clAlgs)))
-        dimnames(meas) <- list(measNames, nClust, clAlgs)
-        j <- 1
-        for (i in 1:dim(meas)[3]) {
-            if (i <= (dim(meas)[3] - length(mbCountMethods))) {
-                meas[, , i] <- clVObj@measures[, , i]
-            }
-            else {
-                meas[, , i] <- MBCountArray[, , j]
-                j <- j + 1
-            }
-        }
-        clusterResults <- c(clValResults, MBCountCluster)
-    }
-    else {
-        meas <- clVObj@measures
-        clusterResults <- clValResults
-    }
-    clVal <- new("clValid", clusterObjs = clusterResults, measures = meas, 
-        measNames = measNames, clMethods = clAlgs, labels = rownames(obj), 
-        nClust = nClustOut, validation = validation, metric = metric, 
-        method = hierMethod, neighbSize = neighbSize, GOcategory = GOcategory, 
-        goTermFreq = goTermFreq, annotation = annotation, call = match.call())
-    clusterOrder <- getRanksWeights(clVal)
-    if ("biological" %in% validation) {
-        BHIrowNum <- which(rownames(clusterOrder$ranks) == "BHI")
-        clusterOrder$ranks[BHIrowNum, ] <- rev(clusterOrder$ranks[BHIrowNum, 
-            ])
-        clusterOrder$weights[BHIrowNum, ] <- rev(clusterOrder$weights[BHIrowNum, 
-            ])
-        BSIrowNum <- which(rownames(clusterOrder$ranks) == "BSI")
-        clusterOrder$ranks[BSIrowNum, ] <- rev(clusterOrder$ranks[BSIrowNum, 
-            ])
-        clusterOrder$weights[BSIrowNum, ] <- rev(clusterOrder$weights[BSIrowNum, 
-            ])
-    }
-    if (exists(c("k"), where = RankAggreg.args)) {
-        nList <- RankAggreg.args$k
-        RankAggreg.args <- RankAggreg.args[-which(names(RankAggreg.args) == 
-            "k")]
-    }
-    else {
-        nList <- ncol(clusterOrder$ranks)
-    }
-    if (exists(c("weights"), where = RankAggreg.args)) {
-        clusterOrder$weights <- RankAggreg.args$weights
-        RankAggreg.args <- RankAggreg.args[-which(names(RankAggreg.args) == 
-            "weights")]
-    }
-    if (is.null(importance)) {
-        importance <- rep(1, nrow(clusterOrder$ranks))
-    }
-    optimal.list <- do.call("RankAggreg", c(list(x = clusterOrder$ranks, 
-        k = nList, weights = clusterOrder$weights, method = rankMethod, 
-        distance = distance, importance = importance, verbose = rankVerbose), 
-        RankAggreg.args))
-    new("optCluster", inputData = mat, clVal = clVal, ranksWeights = clusterOrder, 
-        rankAgg = optimal.list)
+# # Test of tryCatch
+# mylist <- list(1, 2, 3, "e", 4)
+# outlist <- mylist
+# for(i in seq_along(mylist)){
+# 
+#     tryCatch({
+#       print(mylist[[i]]/2)
+#       outlist[[i]] <- (mylist[[i]]/2)
+#     }, error=function(e){
+#       print("e")
+#       print(unlist(outlist))
+#       outlist[[i]] <<- "!"
+#       print(unlist(outlist))
+#       } )
+# }
+# mylist
+# outlist %>% unlist()
+
+# input.df = pca_hvg
+test_clMethods <- function(input.df = mrna_raw[, 2:5],
+                           min.k = 2,
+                           max.k = 10,
+                           is.count = T) {
+  if (is.count) {
+    clMethods <- c("em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson", "sa.poisson")
+  } else if (!(is.count)) {
+    clMethods <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota")
+  } else {
+    warning(paste0("is.count is not of type logical!"))
+  }
+  outMethods <- clMethods
+
+  for (i in clMethods) {
+    # print(i)
+    tryCatch({
+      optCluster(input.df,
+        seq(from = min.k, to = max.k, by = 1),
+        clMethods = i,
+        countData = is.count,
+        validation = "internal", # internal", "stability", "biological", "all"
+        hierMethod = "ward", # "average", "complete", "single", and "ward"
+        annotation = NULL, # Used in biological validation
+        clVerbose = FALSE, # If TRUE, the progress of cluster validation will be produced as output.
+        rankMethod = "CE", # cross-entropy Monte Carlo algorithm ("CE") or Genetic algorithm ("GA"). Selection of only one method is allowed
+        distance = "Spearman", # The two available methods are the weighted Spearman footrule distance ("Spearman") or the weighted Kendall’s tau distance ("Kendall"). Selection of only one distance is allowed.
+        importance = NULL,
+        rankVerbose = FALSE
+      )
+    }, error = function(e) {
+      print(paste0(
+        "Error for ", i
+      ))
+      outMethods <<- outMethods[!(outMethods == i)]
+    })
+  }
+  return(outMethods)
 }
+
+
+
+data.sets <- list(
+  mrna_raw,
+  mrna_target,
+  pca_mrna,
+  pca_mrna_target,
+  
+  seq_hvg,
+  seq_hvg_target,
+  seq_h2k,
+  seq_h2k_target,
+  
+  pca_seq,
+  pca_seq_target,
+  pca_hvg,
+  pca_hvg_target,
+  pca_h2k,
+  pca_h2K_target
+)
+
+data.options <- data.frame(
+  name = c(
+  "mrna_raw",
+  "mrna_target",
+  "pca_mrna",
+  "pca_mrna_target",
+  
+  "seq_hvg",
+  "seq_hvg_target",
+  "seq_h2k",
+  "seq_h2k_target",
+  
+  "pca_seq",
+  "pca_seq_target",
+  "pca_hvg",
+  "pca_hvg_target",
+  "pca_h2k",
+  "pca_h2K_target"
+  ), 
+  min.k = rep(2, times = length(data.sets)), 
+  max.k = c(
+    rep(32, times = 4),
+    rep(10, times = 10)
+  ),
+  is.count = c(
+    T,F,F,F,
+    T,F,T,F,
+    F,F,F,F,F,F
+  )
+)
+
+## Figure out which clMethods to use for each dataset
+
+clMethods.list <- list(length(data.sets))
+for (i in seq_along(data.sets)){
+  clMethods.list[[i]] <- test_clMethods(
+    input.df = data.sets[[i]][,-1],
+    min.k = data.options[i, "min.k"],
+    max.k = data.options[i, "max.k"],
+    is.count = data.options[i, "is.count"]
+    )
+}
+
+## Find optimal cluster for each
+
+clMethods.list[[1]] <- "all" #TODO
+
+optCluster.list <- list(length(data.sets))
+for (i in seq_along(data.sets)){
+  tic <- Sys.time()
+optCluster.list[[i]] <- 
+  optCluster(
+      obj = data.sets[[i]][,-1], 
+      nClust = seq(from = data.options[i, "min.k"], to = data.options[i, "max.k"], by = 1),
+      clMethods = clMethods.list[[i]], 
+      countData = data.options[i, "is.count"],
+      validation = "internal", #internal", "stability", "biological", "all"
+      hierMethod = "ward", #"average", "complete", "single", and "ward"
+      annotation = NULL, #Used in biological validation
+      clVerbose = FALSE, 
+      rankMethod = "CE", 
+      distance = "Spearman", 
+      importance = NULL, 
+      rankVerbose = FALSE)
+
+}
+
+
+out1 <- optCluster(
+      obj = mrna_target[,-1], 
+      nClust = seq(from = data.options[i, "min.k"], to = data.options[i, "max.k"], by = 1),
+      clMethods = c("kmeans", "model", "pam"), 
+      countData = F,
+      validation = "internal", #internal", "stability", "biological", "all"
+      hierMethod = "ward", #"average", "complete", "single", and "ward"
+      annotation = NULL, #Used in biological validation
+      clVerbose = FALSE, 
+      rankMethod = "CE", 
+      distance = "Spearman", 
+      importance = NULL, 
+      rankVerbose = FALSE)
+
+out1
 ```
 
 
 
 
+```{r}
 
+```
 
 
 
@@ -1537,9 +1597,11 @@ walk(seq_along(use.names), function(x){
 ```{r Automate ML functions}
 #Note: Must contain a column called "Cell"
 run_supervised_models <- function(use.seed = 8743436,
-                                  input.df = use.input.df){
-
-#use.seed = 8743436
+                                  input.df = use.input.df,
+                                  train.control = "cv" #loocv
+                                  ){
+if (train.control == "cv"){
+  #use.seed = 8743436
 #input.df = mrna_target
 
 set.seed(use.seed)
@@ -1650,7 +1712,6 @@ svm.lin <- train(
   trControl = trainControl(method = "cv", number = 5, verboseIter = TRUE)
 )
 
-#return(list(knnm,ldam,nnmm,nnm,rfm,svm.rad,svm.lin))
 return(list(GLMNet=glmnetm,
                           kNN=knnm,
                           LDA=ldam,
@@ -1659,24 +1720,158 @@ return(list(GLMNet=glmnetm,
                           Rand.Forest=rfm,
                           SVM.Radial=svm.rad,
                           SVM.Linear=svm.lin))
+}else if(train.control == "loocv"){
+#use.seed = 8743436
+#input.df = mrna_target
+
+set.seed(use.seed)
+glmnetm <- train(
+  Cell ~ ., input.df,
+  metric = "Accuracy",
+  method = "glmnet",
+  tuneGrid = expand.grid(
+    alpha = seq(0, 1, length = 5),
+    lambda = seq(0.0001, 1, length = 100)
+  ),
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+# Plot the results
+#plot(glmnetm)
+
+
+#kNN
+set.seed(use.seed)
+knnm <- train(
+  Cell ~ . ,
+  tuneGrid = expand.grid(k = seq(from =1, to =20, by = 1)),
+  #tuneLength = 20,
+  data = input.df,
+  method = "knn",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+#plot(knnm)
+#print(max(knnm$results$Accuracy, na.rm = T))
+
+#LDA
+set.seed(use.seed)
+ldam <- train(
+  Cell ~ . ,
+  data = input.df,
+  method = "lda",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+#print(ldam)
+
+#neural networks
+set.seed(use.seed)
+nnmm <- train(
+  Cell ~ . ,
+  data = input.df,
+  tuneGrid = expand.grid(decay = seq(from = 0.1, to = 1, by = 0.05)),
+  method = "multinom",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+#plot(nnmm)
+#print(max(nnmm$results$Accuracy, na.rm = T)) #81% accuracy
+
+set.seed(use.seed)
+nnm <- train(
+  Cell ~ . ,
+  data = input.df,
+  tuneGrid = expand.grid(size = seq(from = 1, to = 12, by = 1),
+                        decay = seq(from = 0.1, to = 1.0, by = 0.2)),
+  method = "nnet",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+#plot(nnm)
+#print(max(nnm$results$Accuracy, na.rm = T))
+
+#random forest
+max.mtry = 30
+set.seed(use.seed)
+rfm <- train(
+  Cell ~ . ,
+  #tuneLength = 3,
+  tuneGrid = data.frame(mtry = rep(seq(1, max.mtry, by = 1), times = 2), #mtry can be any number from 2 to the number of columns
+                        splitrule = rep(c("extratrees", "gini"), each = max.mtry), #the docs make it look like these are the two to use for classification
+                        min.node.size = rep(2, each = (max.mtry*2))),
+  data = input.df,
+  method = "ranger",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+#print(rfm)
+#plot(rfm)
+#print(max(rfm$results$Accuracy, na.rm = T))
+
+#svm
+set.seed(use.seed)
+svm.rad <- train(
+  Cell ~ .,
+  tuneGrid = expand.grid(sigma = seq(from = 0.001, to = 0.5, by = 0.01),
+                    C = seq(from = 0.5, to = 5.5, by = 1)),
+  data = input.df,
+  method = "svmRadial",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+#svm.rad
+#plot(svm.rad)
+#print(max(svm.rad$results$Accuracy, na.rm = T))
+
+set.seed(use.seed)
+svm.lin <- train(
+  Cell ~ .,
+  tuneGrid = expand.grid(cost = seq(from = 0.001, to = 0.5, by = 0.01)),
+  data = input.df,
+  method = "svmLinear2",
+  trControl = trainControl(method = "LOOCV", verboseIter = TRUE)
+)
+
+return(list(GLMNet=glmnetm,
+                          kNN=knnm,
+                          LDA=ldam,
+                          NNet=nnm,
+                          NNet.Multinom=nnmm,
+                          Rand.Forest=rfm,
+                          SVM.Radial=svm.rad,
+                          SVM.Linear=svm.lin))
+}else{
+  warning("train.control is neither cv or loocv")
 }
+  
+#return(list(knnm,ldam,nnmm,nnm,rfm,svm.rad,svm.lin))
+
+}
+
 ```
 
 ```{r}
-ml_models <- map(1:13, function(i){
-  use.input.df <- list(mrna_raw, mrna_target, mrna_cell, #TODO terminating after 2
-                     seq_pca, seq_target, seq_cell, seq_hvg, 
-                     seq_raw_k05, seq_target_k05, seq_cell_k05, 
-                     seq_raw_k2, seq_target_k2, seq_cell_k2) #seq_pca[, 1:38]
+ml_models <- map(1:2, function(i){
+  use.input.df <- list(
+mrna_raw, mrna_target, 
+pca_mrna, pca_mrna_target, 
+pca_seq, pca_seq_target, 
+pca_hvg, pca_hvg_target, 
+seq_raw_k2, seq_target_k2, 
+seq_raw_k05, seq_target_k05
+  ) #seq_pca[, 1:38]
   #out <- run_supervised_models(use.seed = 8743436, input.df = use.input.df)
   run_supervised_models(use.seed = 8743436, input.df = use.input.df[[i]])
 })
-name.prefix <- c("mrna_raw", "mrna_target", "mrna_cell", 
-                     "seq_pca", "seq_target", "seq_cell", "seq_hvg", 
-                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
-                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2")
+name.prefix <- c(
+  "mrna_raw", "mrna_target", 
+  "pca_mrna", "pca_mrna_target", 
+  "pca_seq", "pca_seq_target", 
+  "pca_hvg", "pca_hvg_target", 
+  "seq_raw_k2", "seq_target_k2", 
+  "seq_raw_k05", "seq_target_k05")
 
-for(i in seq_along(name.prefix)){
+for(i in seq_along(ml_models)){
 
 out <- ml_models[[i]]
 
