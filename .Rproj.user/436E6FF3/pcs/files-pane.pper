@@ -1,6 +1,10 @@
 {
-    "path" : "S:/Data_Daniel/ActiveProjects/stgmcc/vignettes",
+    "path" : "S:/Data_Daniel/ActiveProjects/stgmcc/inst/extdata/output_files",
     "sortOrder" : [
+        {
+            "ascending" : false,
+            "columnIndex" : 4
+        },
         {
             "ascending" : true,
             "columnIndex" : 2

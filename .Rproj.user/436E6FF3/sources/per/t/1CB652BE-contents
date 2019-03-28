@@ -22,6 +22,7 @@ library(ggbiplot)
 
 # Cluster Determination -------------------------------------------------------
 library(factoextra) #for fviz_nbclust
+library(optCluster)
 library(NbClust) #to automate cluster determination for each dataset
 # Clustering ------------------------------------------------------------------
 library(BiocGenerics) # This is used for clustering assessment
@@ -109,12 +110,25 @@ library("ggthemes") #color plots
 #Which sections should be run?
 # Visualizations
 ## Cluster.estimation ====
+
+run.methods <- F
+save.methods <- F
+load.methods <- T
+
 run.estimate <- T
 save.estimate <- T
 load.estimate <- T
 
-# Clustering
-# Classification
+## Clustering ====
+run.cluster <- T
+save.cluster <- T
+load.cluster <- T
+
+## Classification ====
+run.classify <- T
+save.classify <- T
+load.classify <- T
+
 
 run.snn.cliq <- TRUE # SNN Cliq depend on python. This script is written to work on windows and hasn't been tested on Unix/Macos. Needed file is in ../Py. At the point of writing, python version 3.7 has beed tested.
 write.to.dir <- paste0(getwd(), "/inst/extdata/output_files/")
@@ -141,7 +155,6 @@ predict(preProcess(N, method = c("zv")), N) %>% dim()
 predict(preProcess(N, method = c("nzv")), N) %>% dim()
 
 ```
-
 
 ## Load Datasets:
 ```{r Pull in datasets}
@@ -312,6 +325,50 @@ seq_hvg[, 2:ncol(seq_hvg)] <- round(seq_hvg[, 2:ncol(seq_hvg)])
 seq_h2k[, 2:ncol(seq_h2k)] <- round(seq_h2k[, 2:ncol(seq_h2k)])
 ```
 
+
+
+make tiny datasets for testing
+```{r}
+# ## pcr ====
+# mrna_raw <- mrna_raw[1:17, 1:10]
+# mrna_target <- mrna_target[1:17, 1:10]
+# pca_mrna <- pca_mrna[1:17, 1:10]
+# pca_mrna_target <- pca_mrna_target[1:17, 1:10]
+# 
+# 
+# ## seq ====
+# seq_hvg <- seq_hvg[1:19, 1:10]
+# seq_hvg_target <- seq_hvg_target[1:19, 1:10]
+# seq_h2k <- seq_h2k[1:19, 1:10]
+# seq_h2k_target <- seq_h2k_target[1:19, 1:10]
+# 
+# pca_seq <- pca_seq[1:19, 1:10]
+# pca_seq_target <- pca_seq_target[1:19, 1:10]
+# pca_hvg <- pca_hvg[1:19, 1:10]
+# pca_hvg_target <- pca_hvg_target[1:19, 1:10]
+# pca_h2k <- pca_h2k[1:19, 1:10]
+# pca_h2K_target <- pca_h2K_target[1:19, 1:10]
+
+## pcr ====
+mrna_raw <- mrna_raw[, 1:10]
+mrna_target <- mrna_target[, 1:10]
+pca_mrna <- pca_mrna[, 1:10]
+pca_mrna_target <- pca_mrna_target[, 1:10]
+
+
+## seq ====
+seq_hvg <- seq_hvg[, 1:10]
+seq_hvg_target <- seq_hvg_target[, 1:10]
+seq_h2k <- seq_h2k[, 1:10]
+seq_h2k_target <- seq_h2k_target[, 1:10]
+
+pca_seq <- pca_seq[, 1:10]
+pca_seq_target <- pca_seq_target[, 1:10]
+pca_hvg <- pca_hvg[, 1:10]
+pca_hvg_target <- pca_hvg_target[, 1:10]
+pca_h2k <- pca_h2k[, 1:10]
+pca_h2K_target <- pca_h2K_target[, 1:10]
+```
 
 
 # Visualizations of the data
@@ -872,7 +929,7 @@ I'm packageing the above to (idealy) get a clean way to process and visualize ea
 ```
 
 ```{r eval=FALSE, include=FALSE}
-library(optCluster)
+# library(optCluster)
 # avail.methods <- c("agnes", "clara", "diana", "fanny", "hierarchical", "kmeans", "model", "pam", "som", "sota", "em.nbinom", "da.nbinom", "sa.nbinom", "em.poisson", "da.poisson", "sa.poisson")
 
 # #All methods here seem  to work fine
@@ -1223,111 +1280,117 @@ test_clMethods <- function(input.df = mrna_raw[, 2:5],
   return(outMethods)
 }
 
-if (run.estimate){
 
+if (run.methods) {
+  data.sets <- list(
+    mrna_raw,
+    mrna_target,
+    pca_mrna,
+    pca_mrna_target,
 
-data.sets <- list(
-  mrna_raw,
-  mrna_target,
-  pca_mrna,
-  pca_mrna_target,
-  
-  seq_hvg,
-  seq_hvg_target,
-  seq_h2k,
-  seq_h2k_target,
-  
-  pca_seq,
-  pca_seq_target,
-  pca_hvg,
-  pca_hvg_target,
-  pca_h2k,
-  pca_h2K_target
-)
+    seq_hvg,
+    seq_hvg_target,
+    seq_h2k,
+    seq_h2k_target,
 
-data.options <- data.frame(
-  name = c(
-  "mrna_raw",
-  "mrna_target",
-  "pca_mrna",
-  "pca_mrna_target",
-  
-  "seq_hvg",
-  "seq_hvg_target",
-  "seq_h2k",
-  "seq_h2k_target",
-  
-  "pca_seq",
-  "pca_seq_target",
-  "pca_hvg",
-  "pca_hvg_target",
-  "pca_h2k",
-  "pca_h2K_target"
-  ), 
-  min.k = rep(2, times = length(data.sets)), 
-  max.k = c(
-    rep(32, times = 4),
-    rep(10, times = 10)
-  ),
-  is.count = c(
-    T,F,F,F,
-    T,F,T,F,
-    F,F,F,F,F,F
+    pca_seq,
+    pca_seq_target,
+    pca_hvg,
+    pca_hvg_target,
+    pca_h2k,
+    pca_h2K_target
   )
-)
 
-## Figure out which clMethods to use for each dataset
+  data.options <- data.frame(
+    name = c(
+      "mrna_raw",
+      "mrna_target",
+      "pca_mrna",
+      "pca_mrna_target",
 
-clMethods.list <- list(length(data.sets))
-for (i in seq_along(data.sets)){
-  clMethods.list[[i]] <- test_clMethods(
-    input.df = data.sets[[i]][,-1],
-    min.k = data.options[i, "min.k"],
-    max.k = data.options[i, "max.k"],
-    is.count = data.options[i, "is.count"]
+      "seq_hvg",
+      "seq_hvg_target",
+      "seq_h2k",
+      "seq_h2k_target",
+
+      "pca_seq",
+      "pca_seq_target",
+      "pca_hvg",
+      "pca_hvg_target",
+      "pca_h2k",
+      "pca_h2K_target"
+    ),
+    min.k = rep(2, times = length(data.sets)),
+    max.k = c(
+      # rep(32, times = 4),
+      # rep(10, times = 10)
+
+      rep(4, times = 4), # TODO reinstate the actual mak k we want
+      rep(4, times = 10)
+    ),
+    is.count = c(
+      T, F, F, F,
+      T, F, T, F,
+      F, F, F, F, F, F
     )
+  )
+
+  ## Figure out which clMethods to use for each dataset
+
+  clMethods.list <- list(length(data.sets))
+  for (i in seq_along(data.sets)) {
+    print(data.options[i, "name"])
+    clMethods.list[[i]] <- test_clMethods(
+      input.df = data.sets[[i]][, -1],
+      min.k = data.options[i, "min.k"],
+      max.k = data.options[i, "max.k"],
+      is.count = data.options[i, "is.count"]
+    )
+  }
+}
+if (save.methods) {
+  save(clMethods.list, file = paste0(write.to.dir, "clMethods.list"))
+}
+if (load.methods) {
+  load(file = paste0(write.to.dir, "clMethods.list"))
 }
 
-## Find optimal cluster for each
+if (run.estimate) {
+  ## Find optimal cluster for each
 
-# clMethods.list[[1]] <- "all" #TODO
+  # clMethods.list[[1]] <- "all" #TODO
 
-optCluster.list <- list(length(data.sets))
-for (i in seq_along(data.sets)){
-  tic <- Sys.time()
-optCluster.list[[i]] <- 
-  optCluster(
-      obj = data.sets[[i]][,-1], 
-      nClust = seq(from = data.options[i, "min.k"], to = data.options[i, "max.k"], by = 1),
-      clMethods = clMethods.list[[i]], 
-      countData = data.options[i, "is.count"],
-      validation = "internal", #internal", "stability", "biological", "all"
-      hierMethod = "ward", #"average", "complete", "single", and "ward"
-      annotation = NULL, #Used in biological validation
-      clVerbose = FALSE, 
-      rankMethod = "CE", 
-      distance = "Spearman", 
-      importance = NULL, 
-      rankVerbose = FALSE)
+  optCluster.list <- list(length(data.sets))
+  for (i in seq_along(data.sets)) {
+    tic <- Sys.time()
+    optCluster.list[[i]] <-
+      optCluster(
+        obj = data.sets[[i]][, -1],
+        nClust = seq(from = data.options[i, "min.k"], to = data.options[i, "max.k"], by = 1),
+        clMethods = clMethods.list[[i]],
+        countData = data.options[i, "is.count"],
+        validation = "internal", # internal", "stability", "biological", "all"
+        hierMethod = "ward", # "average", "complete", "single", and "ward"
+        annotation = NULL, # Used in biological validation
+        clVerbose = FALSE,
+        rankMethod = "CE",
+        distance = "Spearman",
+        importance = NULL,
+        rankVerbose = FALSE
+      )
+  }
+}
 
+if (save.estimate) {
+  save(optCluster.list, file = paste0(write.to.dir, "optCluster.list"))
+}
+
+if (load.estimate) {
+  load(file = paste0(write.to.dir, "optCluster.list"))
 }
 
 
 
-
-  
-}
-
-if (save.estimate){
-  
-  saveRDS(clMethods.list, file = paste0(write.to.dir,"clMethods.list.RDS"))
-  saveRDS(optCluster.list, file = paste0(write.to.dir,"optCluster.list.RDS"))
-  
-}
-
-if (load.estimate){
-  
-}
 
 
 # 
@@ -1373,7 +1436,7 @@ if (load.estimate){
 
 
 # Unsupervised Machine Learning
-```{r automate clustering}
+```{r automate clustering functions}
 # Methods ---------------------------------------------------------------------
 
 ## k means ====================================================================
@@ -1417,6 +1480,8 @@ get_SNN_clustering <- function(input.df = mrna_raw,
     k = use.k,
     distance = use.distance
   )
+  
+  # SNN(mrna_target[,-1], outfile = paste0(getwd(), "/inst/extdata/output_files/temp_edges.txt"), k = 4, distance = "euclidean")
 
   if (Sys.info()['sysname'] == "Windows"){
     # in CMD run:
@@ -1477,6 +1542,7 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
 
   # Generate Clusterings --------------------------------------------------------
   ## K Means Clustering =========================================================
+  print("BEGIN K-MEANS =========================================================")
   # use.k.param <- c(11)
 
   temp <- map(use.k.param.kmeans, function(iter.k.param) {
@@ -1492,8 +1558,11 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
 
   K.clusters <- do.call(cbind.data.frame, temp)
   names(K.clusters) <- param.combinations
+  print("END K-MEANS ===========================================================")
+  
 
   ## Hierarchical Clustering ====================================================
+  print("BEGIN H-CLUST =========================================================")
   use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski", "correlation", "uncentered") # flag thought this might cause trouble
   use.hclust.methods <- c("ward.D", "single", "complete", "average", "mcquitty", "median", "centroid", "ward.D2")
 
@@ -1517,7 +1586,11 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
 
   H.clusters <- do.call(cbind.data.frame, temp)
   names(H.clusters) <- param.combinations
+  print("END H-CLUST ===========================================================")
+  
+  
   ## SNN Clustering =============================================================
+  print("BEGIN SNNCLIQ =========================================================")
   use.dist.methods <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski") # Note this can't use cor and uncentered like Hclust can.
 
   temp <- map(use.dist.methods, function(iter.dist) {
@@ -1541,11 +1614,15 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
 
   SNN.clusters <- do.call(cbind.data.frame, temp)
   names(SNN.clusters) <- param.combinations
-
+  print("END SNNCLIQ ===========================================================")
+  
+  
   # Evaluate and summarize clusters ---------------------------------------------
   ## Merge Data Frames ==========================================================
+  print("MERGE DATA ============================================================")
+  
   all.clusters <- cbind(K.clusters, H.clusters) %>% cbind(SNN.clusters)
-  # some clusterings fail and assing all values zero
+  # some clusterings fail and pass all values zero
   # Some have a TON of clusters
   num.clusters <- map(all.clusters, function(x) {
     print(max(x))
@@ -1558,6 +1635,7 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
   all.clusters <- cbind(Cell.Type = as.numeric(use.input.df$Cell), all.clusters[])
 
   ## Score Clusterings ==========================================================
+  print("SCORE CLUSTERS ========================================================")
   temp <- map(all.clusters, function(iter.param) {
     get_cluster_comparisons(reference.clustering = use.input.df$Cell, generated.clustering = iter.param)
   })
@@ -1569,6 +1647,7 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
   all.clusters.scores.long <- gather(all.clusters.scores, Metric, Value, 1:6)
 
   ## Return long version of scores ============================================
+  print("RETURN CLUSTERS =======================================================")
   return(list(all.clusters.scores, all.clusters.scores.long))
 }
 ```
@@ -1582,11 +1661,26 @@ evaluate_clust_params <- function(use.input.df = mrna_raw, # mrna_cell #mrna_tar
 #)
 #all.clusters.scores <- all.clusters.scores.long[[1]]
 
-## Run for RTqPCR =============================================================
-use.datasets <- list(mrna_raw, mrna_target, mrna_cell) # , mrna_target, mrna_cell, seq_pca, seq_target, seq_cell, seq_hvg)
-use.names.1 <- list("mrna_raw", "mrna_target", "mrna_cell") #TODO
+if (run.cluster){
+  ## Run for RTqPCR =============================================================
+use.datasets.1 <- list(mrna_raw,
+  mrna_target,
+  pca_mrna,
+  pca_mrna_target) # , mrna_target, mrna_cell, seq_pca, seq_target, seq_cell, seq_hvg)
+use.names.1 <- list(
+  "mrna_raw",
+  "mrna_target",
+  "pca_mrna",
+  "pca_mrna_target") 
+
+
 clust_score_list <- list()
-for (i in seq_along(use.datasets)) {
+for (i in seq_along(use.datasets.1)) {
+  print(paste0(
+    "BEGIN i = ",
+    as.character(i),
+    " -----------------------------------------------------------"
+  ))
   list.index <- length(clust_score_list) + 1
   clust_score_list[[list.index]] <- evaluate_clust_params(
     use.input.df = mrna_raw, # mrna_cell #mrna_target #mrna_raw
@@ -1595,16 +1689,39 @@ for (i in seq_along(use.datasets)) {
     use.k.param.hclust = c(11),
     use.k.param.snncliq = c(3:9)
   )[[1]]
+
+  print(paste0(
+    "END   i = ",
+    as.character(i),
+    " -----------------------------------------------------------"
+  ))
 }
 ## Repeat for seq =============================================================
-use.datasets <- list(seq_pca, seq_target, seq_cell, seq_hvg, 
-                     seq_raw_k05, seq_target_k05, seq_cell_k05, 
-                     seq_raw_k2, seq_target_k2, seq_cell_k2) # , mrna_target, mrna_cell, seq_pca, seq_target, seq_cell, seq_hvg)
-use.names.2 <- list("seq_pca", "seq_target", "seq_cell", "seq_hvg", 
-                     "seq_raw_k05", "seq_target_k05", "seq_cell_k05", 
-                     "seq_raw_k2", "seq_target_k2", "seq_cell_k2") #TODO
+use.datasets.2 <- list(seq_hvg,
+  seq_hvg_target,
+  seq_h2k,
+  seq_h2k_target,
+  
+  pca_seq,
+  pca_seq_target,
+  pca_hvg,
+  pca_hvg_target,
+  pca_h2k,
+  pca_h2K_target) 
 
-for (i in seq_along(use.datasets)) {
+use.names.2 <- list("seq_hvg",
+  "seq_hvg_target",
+  "seq_h2k",
+  "seq_h2k_target",
+  
+  "pca_seq",
+  "pca_seq_target",
+  "pca_hvg",
+  "pca_hvg_target",
+  "pca_h2k",
+  "pca_h2K_target") 
+
+for (i in seq_along(use.datasets.2)) {
   list.index <- length(clust_score_list) + 1
   clust_score_list[[list.index]] <- evaluate_clust_params(
     use.input.df = mrna_raw, # mrna_cell #mrna_target #mrna_raw
@@ -1614,11 +1731,27 @@ for (i in seq_along(use.datasets)) {
     use.k.param.snncliq = c(3:9)
   )[[1]]
 }
-## Write out scores ===========================================================
+
+}
+
+if (save.cluster){
+  ## Write out scores ===========================================================
 use.names <- c(use.names.1, use.names.2)
 walk(seq_along(use.names), function(x){
-  write.csv(clust_score_list[[x]], file = paste0(write.to.dir, use.names[[x]], "_clustScore.csv"))
+  
+  saveRDS(clust_score_list[[x]], 
+          file = paste0(write.to.dir, use.names[[x]], "_clustScore.RDS"))
+  
+  write.csv(clust_score_list[[x]], 
+            file = paste0(write.to.dir, use.names[[x]], "_clustScore.csv"))
 })
+}
+
+if (load.cluster){
+  
+}
+
+
 ```
 
 
@@ -1886,48 +2019,201 @@ return(list(GLMNet=glmnetm,
 ```
 
 ```{r}
-ml_models <- map(1:2, function(i){
+if(run.classify){
+
+## With 5 fold CV
+  ml_models.CV <- purrr::map(1:2, function(i){ #TODO change to account for all
   use.input.df <- list(
-mrna_raw, mrna_target, 
-pca_mrna, pca_mrna_target, 
-pca_seq, pca_seq_target, 
-pca_hvg, pca_hvg_target, 
-seq_raw_k2, seq_target_k2, 
-seq_raw_k05, seq_target_k05
+  mrna_raw,
+  mrna_target#,
+  # pca_mrna,
+  # pca_mrna_target,
+  # 
+  # seq_hvg,
+  # seq_hvg_target,
+  # seq_h2k,
+  # seq_h2k_target,
+  # 
+  # pca_seq,
+  # pca_seq_target,
+  # pca_hvg,
+  # pca_hvg_target,
+  # pca_h2k,
+  # pca_h2K_target
   ) #seq_pca[, 1:38]
   #out <- run_supervised_models(use.seed = 8743436, input.df = use.input.df)
   run_supervised_models(use.seed = 8743436, input.df = use.input.df[[i]])
 })
-name.prefix <- c(
-  "mrna_raw", "mrna_target", 
-  "pca_mrna", "pca_mrna_target", 
-  "pca_seq", "pca_seq_target", 
-  "pca_hvg", "pca_hvg_target", 
-  "seq_raw_k2", "seq_target_k2", 
-  "seq_raw_k05", "seq_target_k05")
-
-for(i in seq_along(ml_models)){
-
-out <- ml_models[[i]]
+  
 
 
+## With LOOCV ====
+  ml_models.LOOCV <- purrr::map(1:2, function(i){ #TODO change to account for all
+  use.input.df <- list(
+  mrna_raw,
+  mrna_target#,
+  # pca_mrna,
+  # pca_mrna_target,
+  # 
+  # seq_hvg,
+  # seq_hvg_target,
+  # seq_h2k,
+  # seq_h2k_target,
+  # 
+  # pca_seq,
+  # pca_seq_target,
+  # pca_hvg,
+  # pca_hvg_target,
+  # pca_h2k,
+  # pca_h2K_target
+  ) #seq_pca[, 1:38]
+  #out <- run_supervised_models(use.seed = 8743436, input.df = use.input.df)
+  run_supervised_models(use.seed = 8743436, input.df = use.input.df[[i]], train.control = "loocv")
+})
+  
 
-rValues <- resamples(out)
+  
 
-#save the accuracies for future use
-write.csv(as.data.frame(rValues$values),
-          file = paste0(write.to.dir, name.prefix[[i]],"_model_accuracy.csv"),
-          row.names = FALSE)
-
-pdf(file = paste0(write.to.dir, name.prefix[i],"_Accuracy", ".pdf"))
-  bwplot(rValues, metric = "Accuracy", ylab = c("Models"), xlim = c(0,1))
-  dev.off()
-
-pdf(file = paste0(write.to.dir, name.prefix[i],"_Kappa", ".pdf"))
-  bwplot(rValues, metric="Kappa", ylab = c("Models"), xlim = c(0,1))
-  dev.off()
 }
+if(save.classify){
+  name.prefix <- c(
+  "mrna_raw",
+  "mrna_target",
+  "pca_mrna",
+  "pca_mrna_target",
+  
+  "seq_hvg",
+  "seq_hvg_target",
+  "seq_h2k",
+  "seq_h2k_target",
+  
+  "pca_seq",
+  "pca_seq_target",
+  "pca_hvg",
+  "pca_hvg_target",
+  "pca_h2k",
+  "pca_h2K_target"
+  )
+
+# saveRDS(as.data.frame(rValues.CV$values),
+#         file = paste0(write.to.dir, name.prefix[[i]],"_model_accuracy.RDS"),
+#         row.names = FALSE)  
+#   
+#   #save the accuracies for future use
+# write.csv(as.data.frame(rValues.CV$values),
+#           file = paste0(write.to.dir, name.prefix[[i]],"_model_accuracy.csv"),
+#           row.names = FALSE)
+
+for(i in seq_along(ml_models.CV)){
+out <- ml_models.CV[[i]]
+rValues.CV <- resamples(out)
+
+
+saveRDS(as.data.frame(rValues.CV$values),
+        file = paste0(write.to.dir, name.prefix[[i]],"_cv_model_accuracy.RDS")
+        )  
+  
+  #save the accuracies for future use
+write.csv(as.data.frame(rValues.CV$values),
+          file = paste0(write.to.dir, name.prefix[[i]],"_cv_model_accuracy.csv"),
+          row.names = FALSE)
+  
+}
+
+  
+for(i in seq_along(ml_models.LOOCV)){
+out <- ml_models.LOOCV[[i]]
+rValues.LOOCV <- resamples(out)
+
+
+saveRDS(as.data.frame(rValues.LOOCV$values),
+        file = paste0(write.to.dir, name.prefix[[i]],"_loocv_model_accuracy.RDS")
+        )  
+  
+  #save the accuracies for future use
+write.csv(as.data.frame(rValues.LOOCV$values),
+          file = paste0(write.to.dir, name.prefix[[i]],"_loocv_model_accuracy.csv"),
+          row.names = FALSE)
+  
+}
+  
+}
+if(load.classify){
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+# pdf(file = paste0(write.to.dir, name.prefix[i],"_Accuracy", ".pdf"))
+#   bwplot(rValues.CV, metric = "Accuracy", ylab = c("Models"), xlim = c(0,1))
+#   dev.off()
+# 
+# pdf(file = paste0(write.to.dir, name.prefix[i],"_Kappa", ".pdf"))
+#   bwplot(rValues.CV, metric="Kappa", ylab = c("Models"), xlim = c(0,1))
+#   dev.off()
+
 ```
+
+
+
+
+
+
+
+
+```{r}
+data.sets <- list(
+  mrna_raw,
+  mrna_target,
+  pca_mrna,
+  pca_mrna_target,
+  
+  seq_hvg,
+  seq_hvg_target,
+  seq_h2k,
+  seq_h2k_target,
+  
+  pca_seq,
+  pca_seq_target,
+  pca_hvg,
+  pca_hvg_target,
+  pca_h2k,
+  pca_h2K_target
+)
+
+  name = c(
+  "mrna_raw",
+  "mrna_target",
+  "pca_mrna",
+  "pca_mrna_target",
+  
+  "seq_hvg",
+  "seq_hvg_target",
+  "seq_h2k",
+  "seq_h2k_target",
+  
+  "pca_seq",
+  "pca_seq_target",
+  "pca_hvg",
+  "pca_hvg_target",
+  "pca_h2k",
+  "pca_h2K_target"
+  )
+
+```
+
+
+
 
 ```{r}
 toc <- Sys.time()

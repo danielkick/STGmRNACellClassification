@@ -1,0 +1,55 @@
+[0mMicrosoft Windows [Version 6.1.7601][0K[?25l
+Copyright (c) 2009 Microsoft Corporation.  All rights reserved.[0K
+[0K
+S:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hp[0Ky[0Kt[0Kh[0K[?25lS:\Data_Daniel\ActiveProjects\stgmcc>pyt[0K[?25h[?25lS:\Data_Daniel\ActiveProjects\stgmcc>py[0K[?25h[?25lS:\Data_Daniel\ActiveProjects\stgmcc>p[0K[?25h[?25lS:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hp[0Ky[0Kt[0Kh[0Ko[0Kn[0K]0;  - python[?25l
+[0K[?25hPython 3.7.0 (v3.7.0:1bf9cc5093, Jun 27 2018, 04:06:47) [MSC v.1914 32 bit (Intel)] on win32[0K[?25l
+Type "help", "copyright", "credits" or "license" for more information.[0K
+[0K[?25h>>>[0K[5G[?25l>>> q[0K[?25hu[0Ki[0Kt[0K([0K)[0K]0; [?25l
+[0K
+S:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hP[0K[?25lS:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25h^V[0K[?25lS:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hPy\Cliq.py -i inst\extdata\output_files\temp_edges.txt -o inst\ex[0Kt[?25l
+data\output_files\temp_clust.txt[0K[?25h[?25l
+[0K[?25h]0;  - Py\Cliq.py  -i inst\extdata\output_files\temp_edges.txt -o inst\extdata\output_files\temp_clust.txtError in arguments: must specify -i -o[0K[?25l
+[0K
+  usage: SNNgraph_clustering.py -i <edge_file> -o <out_file> [options][0K
+  -i,--input    input file path and name[0K
+  -o,--output   output file path and name[0K
+  optional arguments:[0K
+  -r,--r-quasi-cliq     quasi-clique parameter. A number in the range of (0  1]. Default is 0.7.[0K
+  -m,--merging  merging parameter. A number in the range of (0  1]. Default is 0.5.[0K
+  -n,--number   number of objects. Default is the maximum index in the input file.[0K
+  -h,--help     print help message.[0K
+[0K
+[0K[?25h]0; [?25l
+S:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hl[0Ksi[0K[?25lS:\Data_Daniel\ActiveProjects\stgmcc>ls[0K[?25h[?25lS:\Data_Daniel\ActiveProjects\stgmcc>l[0K[?25hi[0Ks[0Kt[0K.[0Kf[0Ki[0Kl[0Ke[0Ks[0K[?25l
+'list.files' is not recognized as an internal or external command,[0K
+operable program or batch file.[0K
+[0K
+S:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hlist.files[0K[?25lS:\Data_Daniel\ActiveProjects\stgmcc>Py\Cliq.py -i inst\extdata\output_files\temp_edges.txt -o inst\ex[0Kt
+data\output_files\temp_clust.txt[0K[?25h[?25l
+[0K[?25h]0;  - Py\Cliq.py  -i inst\extdata\output_files\temp_edges.txt -o inst\extdata\output_files\temp_clust.txt]0; Error in arguments: must specify -i -o[0K[?25l
+[0K
+  usage: SNNgraph_clustering.py -i <edge_file> -o <out_file> [options][0K
+  -i,--input    input file path and name[0K
+  -o,--output   output file path and name[0K
+  optional arguments:[0K
+  -r,--r-quasi-cliq     quasi-clique parameter. A number in the range of (0  1]. Default is 0.7.[0K
+  -m,--merging  merging parameter. A number in the range of (0  1]. Default is 0.5.[0K
+  -n,--number   number of objects. Default is the maximum index in the input file.[0K
+  -h,--help     print help message.[0K
+[0K
+[0K
+S:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25hPy\Cliq.py -i inst\extdata\output_files\temp_edges.txt -o inst\ex[0Kt[?25l
+data\output_files\temp_clust.txt[0K[?25h[?25l
+[0K[?25h]0;  - Py\Cliq.py  -i inst\extdata\output_files\temp_edges.txt -o inst\extdata\output_files\temp_clust.txtError in arguments: must specify -i -o[0K[?25l
+[0K
+  usage: SNNgraph_clustering.py -i <edge_file> -o <out_file> [options][0K
+  -i,--input    input file path and name[0K
+  -o,--output   output file path and name[0K
+  optional arguments:[0K
+  -r,--r-quasi-cliq     quasi-clique parameter. A number in the range of (0  1]. Default is 0.7.[0K
+  -m,--merging  merging parameter. A number in the range of (0  1]. Default is 0.5.[0K
+  -n,--number   number of objects. Default is the maximum index in the input file.[0K
+  -h,--help     print help message.[0K
+[0K
+[0K[?25h]0; [?25l
+S:\Data_Daniel\ActiveProjects\stgmcc>[0K[?25h

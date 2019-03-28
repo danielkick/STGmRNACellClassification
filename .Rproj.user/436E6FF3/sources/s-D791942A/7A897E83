@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1553611824545.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "7A897E83",
+    "lastKnownWriteTime" : 1553805438,
+    "last_content_update" : 1553805438,
+    "path" : "S:/Data_Daniel/ActiveProjects/stgmcc/vignettes/Northcutt2018.Rmd",
+    "project_path" : "vignettes/Northcutt2018.Rmd",
+    "properties" : {
+        "cursorPosition" : "1342,0",
+        "docOutlineVisible" : "0",
+        "scrollLine" : "1290"
+    },
+    "relative_order" : 2,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_markdown"
+}
