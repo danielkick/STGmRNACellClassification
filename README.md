@@ -1,1 +1,1 @@
-stgmcc
+This is the data and code corresponding to the statistics and figures in Northcutt et al 2019. The paper is located at https://www.pnas.org/content/116/52/26980 . Data represented here is single cell RTqPCR measurements of transcripts relevant to electrophysiological output. Representatives from the STNS and cardiac ganglion of _C. borealis_ have been included.
